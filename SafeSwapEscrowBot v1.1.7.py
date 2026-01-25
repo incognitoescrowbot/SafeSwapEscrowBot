@@ -5284,10 +5284,12 @@ async def update_deals_completed_callback(context: ContextTypes.DEFAULT_TYPE):
     try:
         increment_stat('deals_completed')
         logger.info("Deals completed counter incremented")
-        next_interval = random.randint(1800, 5400)
-        context.job_queue.run_once(update_deals_completed_callback, next_interval)
     except Exception as e:
         logger.error(f"Error in update_deals_completed_callback: {e}")
+    finally:
+        next_interval = random.randint(1800, 5400)
+        context.job_queue.run_once(update_deals_completed_callback, next_interval)
+        logger.info(f"Scheduled next deals_completed increment in {next_interval} seconds")
 
 
 async def update_disputes_resolved_callback(context: ContextTypes.DEFAULT_TYPE):
@@ -5295,10 +5297,12 @@ async def update_disputes_resolved_callback(context: ContextTypes.DEFAULT_TYPE):
     try:
         increment_stat('disputes_resolved')
         logger.info("Disputes resolved counter incremented")
-        next_interval = random.randint(36000, 108000)
-        context.job_queue.run_once(update_disputes_resolved_callback, next_interval)
     except Exception as e:
         logger.error(f"Error in update_disputes_resolved_callback: {e}")
+    finally:
+        next_interval = random.randint(10800, 32400)
+        context.job_queue.run_once(update_disputes_resolved_callback, next_interval)
+        logger.info(f"Scheduled next disputes_resolved increment in {next_interval} seconds")
 
 
 async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
@@ -5509,7 +5513,7 @@ def main() -> None:
     job_queue = application.job_queue
     if job_queue:
         initial_deals_interval = random.randint(1800, 5400)
-        initial_disputes_interval = random.randint(36000, 108000)
+        initial_disputes_interval = random.randint(10800, 32400)
         job_queue.run_once(update_deals_completed_callback, initial_deals_interval)
         job_queue.run_once(update_disputes_resolved_callback, initial_disputes_interval)
         job_queue.run_once(monitor_buyer_wallets_callback, 10)  # Start buyer wallet monitoring after 10 seconds

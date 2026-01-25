@@ -1,1 +1,1 @@
-worker: python "IncognitoEscrowBot v8.0.py"
+worker: python "SafeSwapEscrowBot v1.1.7"
