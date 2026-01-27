@@ -93,7 +93,7 @@ PySocks
 pyTelegramBotAPI
 python-dateutil
 python-dotenv
-python-telegram-bot
+python-telegram-bot[job-queue]
 pytz
 pyunormalize
 PyYAML
