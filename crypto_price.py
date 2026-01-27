@@ -1,11 +1,21 @@
 import requests
 import logging
 import sqlite3
+import os
 from datetime import datetime
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Database path configuration
+RENDER_DB_DIR = '/opt/render/project/data'
+LOCAL_DB_DIR = r'C:\Users\NEW USER\PycharmProjects\SafeSwapEscrowBot'
+
+if os.path.exists(RENDER_DB_DIR):
+    DB_PATH = os.path.join(RENDER_DB_DIR, 'escrow_bot.db')
+else:
+    DB_PATH = os.path.join(LOCAL_DB_DIR, 'escrow_bot.db')
 
 # Dictionary mapping crypto symbols to their IDs in CoinGecko API
 CRYPTO_ID_MAP = {
@@ -23,7 +33,7 @@ def init_crypto_prices_table():
     """Initialize the crypto_prices table in escrow_bot.db if it doesn't exist."""
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -47,7 +57,7 @@ def save_price_to_db(crypto_type, price):
     crypto_type = crypto_type.upper()
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -69,7 +79,7 @@ def get_price_from_db(crypto_type):
     crypto_type = crypto_type.upper()
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('''

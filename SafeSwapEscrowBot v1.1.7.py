@@ -64,6 +64,16 @@ telethon_client = None
 # Welcome Video URL
 WELCOME_VIDEO_URL = os.getenv('WELCOME_VIDEO_URL', '')
 
+# Database path configuration
+RENDER_DB_DIR = '/opt/render/project/data'
+LOCAL_DB_DIR = r'C:\Users\NEW USER\PycharmProjects\SafeSwapEscrowBot'
+
+if os.path.exists(RENDER_DB_DIR):
+    DB_PATH = os.path.join(RENDER_DB_DIR, 'escrow_bot.db')
+else:
+    DB_PATH = os.path.join(LOCAL_DB_DIR, 'escrow_bot.db')
+
+logger.info(f"Using database path: {DB_PATH}")
 
 # Database setup
 def escape_markdown(text):
@@ -123,7 +133,7 @@ async def safe_send_text(message_method, text, parse_mode=None, **kwargs):
 def setup_database():
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         # Users table
@@ -353,7 +363,7 @@ def setup_database():
 def migrate_wallets_table():
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute("PRAGMA table_info(wallets)")
@@ -375,7 +385,7 @@ def migrate_wallets_table():
 def migrate_transactions_table():
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute("PRAGMA table_info(transactions)")
@@ -434,7 +444,7 @@ def get_or_create_user(user_id, username, first_name, last_name, language_code='
     conn = None
     user = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT * FROM users WHERE user_id = ?', (user_id,))
@@ -464,7 +474,7 @@ def get_stat(stat_key):
     conn = None
     value = 0
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', (stat_key,))
         result = cursor.fetchone()
@@ -482,12 +492,23 @@ def increment_stat(stat_key):
     """Increment a stat value in the database."""
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE stats SET stat_value = stat_value + 1, last_updated = CURRENT_TIMESTAMP WHERE stat_key = ?',
-            (stat_key,)
-        )
+        
+        STAT_INITIAL_VALUES = {
+            'deals_completed': 274,
+            'disputes_resolved': 52
+        }
+        initial_value = STAT_INITIAL_VALUES.get(stat_key, 0)
+        
+        cursor.execute('''
+            INSERT INTO stats (stat_key, stat_value, last_updated)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(stat_key) DO UPDATE 
+            SET stat_value = stat_value + 1, 
+                last_updated = CURRENT_TIMESTAMP
+        ''', (stat_key, initial_value))
+        
         conn.commit()
     except sqlite3.Error as e:
         print(f"Database error in increment_stat: {e}")
@@ -510,7 +531,7 @@ def process_pending_recipient(user_id, username):
     conn = None
     transactions_updated = 0
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         username_clean = username.lstrip('@')
@@ -576,7 +597,7 @@ def get_user_id_from_username(username):
     conn = None
     user_id = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         username_to_search = username.lstrip('@')
@@ -664,7 +685,7 @@ def create_wallet(user_id, crypto_type, wallet_type='single', address_type=ADDRE
 
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
 
             cursor.execute(
@@ -726,7 +747,7 @@ def create_intermediary_wallet(transaction_id, crypto_type):
 
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
 
             cursor.execute(
@@ -761,7 +782,7 @@ def get_user_wallets(user_id):
     conn = None
     wallets = []
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('''SELECT wallet_id, crypto_type, address, balance, private_key,
@@ -780,7 +801,7 @@ def get_wallet_balance(wallet_id):
     conn = None
     wallet = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT crypto_type, address, private_key, balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
@@ -839,7 +860,7 @@ def update_wallet_balance(wallet_id, new_balance):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -872,7 +893,7 @@ def sync_blockchain_balance(wallet_id):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT address, balance, crypto_type FROM wallets WHERE wallet_id = ?', (wallet_id,))
@@ -940,7 +961,7 @@ def subtract_wallet_balance(wallet_id, amount):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
@@ -989,7 +1010,7 @@ def add_to_pending_balance(user_id, crypto_type, amount):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT wallet_id, pending_balance FROM wallets WHERE user_id = ? AND crypto_type = ?',
@@ -1032,7 +1053,7 @@ def create_transaction(seller_id, buyer_id, crypto_type, amount, description="",
 
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1059,7 +1080,7 @@ def get_transaction(transaction_id):
     conn = None
     transaction = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT * FROM transactions WHERE transaction_id = ?', (transaction_id,))
@@ -1075,7 +1096,7 @@ def get_transaction(transaction_id):
 def update_transaction_status(transaction_id, status):
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         if status == 'COMPLETED':
@@ -1083,6 +1104,7 @@ def update_transaction_status(transaction_id, status):
                 'UPDATE transactions SET status = ?, completion_date = ? WHERE transaction_id = ?',
                 (status, datetime.now().isoformat(), transaction_id)
             )
+            increment_stat('deals_completed')
         else:
             cursor.execute(
                 'UPDATE transactions SET status = ? WHERE transaction_id = ?',
@@ -1102,7 +1124,7 @@ def update_transaction_status(transaction_id, status):
 def update_transaction_group_id(transaction_id, group_id):
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1123,7 +1145,7 @@ def get_user_transactions(user_id):
     conn = None
     transactions = []
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1157,7 +1179,7 @@ def get_user_pending_transaction_balance(user_id, crypto_type):
     conn = None
     pending_balance = 0.0
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute(
@@ -1190,7 +1212,7 @@ def check_duplicate_description(user_id, description):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute(
@@ -1304,7 +1326,7 @@ def has_pending_transactions(user_id, crypto_type='BTC'):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute(
@@ -1331,7 +1353,7 @@ def create_dispute(transaction_id, initiator_id, reason, evidence):
 
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -1363,7 +1385,7 @@ def create_dispute(transaction_id, initiator_id, reason, evidence):
 def resolve_dispute(dispute_id, resolution, notes):
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute('SELECT transaction_id FROM disputes WHERE dispute_id = ?', (dispute_id,))
@@ -1412,6 +1434,7 @@ def resolve_dispute(dispute_id, resolution, notes):
             )
 
         conn.commit()
+        increment_stat('disputes_resolved')
         return True
     except sqlite3.Error as e:
         print(f"Database error in resolve_dispute: {e}")
@@ -1592,7 +1615,7 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
     if data == 'deposit_to_escrow':
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -2201,7 +2224,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         conn = None
         wallet = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute('SELECT wallet_id, balance FROM wallets WHERE user_id = ? AND crypto_type = ?',
                            (user.id, crypto_type.upper()))
@@ -2269,7 +2292,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 if balance_satoshis > 250:
                     # Get private key to send BTC to third-party wallet
                     try:
-                        conn_pk = sqlite3.connect('escrow_bot.db', timeout=20.0)
+                        conn_pk = sqlite3.connect(DB_PATH, timeout=20.0)
                         cursor_pk = conn_pk.cursor()
                         cursor_pk.execute('SELECT private_key FROM wallets WHERE wallet_id = ?', (wallet_id,))
                         pk_result = cursor_pk.fetchone()
@@ -2684,7 +2707,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute('SELECT wallet_id, balance FROM wallets WHERE user_id = ? AND crypto_type = ?',
                           (user.id, crypto_type.upper()))
@@ -2734,7 +2757,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute('SELECT balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
             escrow_wallet = cursor.fetchone()
@@ -2833,7 +2856,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute('SELECT balance, pending_balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
             seller_wallet = cursor.fetchone()
@@ -2892,7 +2915,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute('SELECT balance, pending_balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
             initiator_wallet = cursor.fetchone()
@@ -2961,7 +2984,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
     
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         # Get the most recent pending transaction for the user (as buyer or seller)
@@ -3133,7 +3156,7 @@ async def select_withdraw_wallet(update: Update, context: CallbackContext) -> in
     
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         cursor.execute('SELECT balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
         wallet = cursor.fetchone()
@@ -3231,7 +3254,7 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
     
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('SELECT address, private_key FROM wallets WHERE wallet_id = ?', (wallet_id,))
@@ -3296,7 +3319,7 @@ def send_btc_to_seller(buyer_wallet_id, seller_id, amount, fee_amount, fee_walle
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('SELECT address, private_key, wallet_type, address_type FROM wallets WHERE wallet_id = ?', (buyer_wallet_id,))
@@ -3358,7 +3381,7 @@ def refund_btc_to_buyer(escrow_wallet_id, seller_id):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('SELECT address, private_key, wallet_type, address_type FROM wallets WHERE wallet_id = ?', (escrow_wallet_id,))
@@ -3416,7 +3439,7 @@ async def release_command(update: Update, context: CallbackContext) -> None:
     conn = None
     results = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -3489,7 +3512,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
         # Check if seller has a wallet for this crypto type before proceeding
         conn_check = None
         try:
-            conn_check = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn_check = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor_check = conn_check.cursor()
             cursor_check.execute('SELECT address FROM wallets WHERE user_id = ? AND crypto_type = ?', (seller_id, crypto_type.upper()))
             seller_wallet = cursor_check.fetchone()
@@ -3524,7 +3547,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
         transaction = None
         intermediary_wallet_id = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             cursor.execute('SELECT seller_id, buyer_id, crypto_type, amount, fee_amount, status, wallet_id, intermediary_wallet_id FROM transactions WHERE transaction_id = ?', (transaction_id,))
             transaction = cursor.fetchone()
@@ -3566,7 +3589,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
         if intermediary_wallet_id:
             conn_balance = None
             try:
-                conn_balance = sqlite3.connect('escrow_bot.db', timeout=20.0)
+                conn_balance = sqlite3.connect(DB_PATH, timeout=20.0)
                 cursor_balance = conn_balance.cursor()
                 cursor_balance.execute('SELECT address FROM wallets WHERE wallet_id = ?', (intermediary_wallet_id,))
                 intermediary_result = cursor_balance.fetchone()
@@ -3602,7 +3625,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
                 # Check if seller has a wallet for this crypto type before proceeding
                 conn_check = None
                 try:
-                    conn_check = sqlite3.connect('escrow_bot.db', timeout=20.0)
+                    conn_check = sqlite3.connect(DB_PATH, timeout=20.0)
                     cursor_check = conn_check.cursor()
                     cursor_check.execute('SELECT address FROM wallets WHERE user_id = ? AND crypto_type = ?', (seller_id, crypto_type.upper()))
                     seller_wallet = cursor_check.fetchone()
@@ -3653,7 +3676,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
             # Check if seller has a wallet for this crypto type before proceeding
             conn_check = None
             try:
-                conn_check = sqlite3.connect('escrow_bot.db', timeout=20.0)
+                conn_check = sqlite3.connect(DB_PATH, timeout=20.0)
                 cursor_check = conn_check.cursor()
                 cursor_check.execute('SELECT address FROM wallets WHERE user_id = ? AND crypto_type = ?', (seller_id, crypto_type.upper()))
                 seller_wallet = cursor_check.fetchone()
@@ -3685,7 +3708,7 @@ async def dispute_command(update: Update, context: CallbackContext) -> int:
     conn = None
     results = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -3840,7 +3863,7 @@ async def language_callback(update: Update, context: CallbackContext) -> None:
         # Update user's language preference in database
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
 
             cursor.execute(
@@ -4210,7 +4233,7 @@ async def sign_transaction_command(update: Update, context: CallbackContext) -> 
     conn = None
     result = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         # Look for a wallet with txid
@@ -4245,7 +4268,7 @@ async def sign_transaction_command(update: Update, context: CallbackContext) -> 
     conn = None
     wallet = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         cursor.execute(
@@ -4288,7 +4311,7 @@ async def sign_transaction_command(update: Update, context: CallbackContext) -> 
                 # Store the signed transaction hex in the database
                 conn = None
                 try:
-                    conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+                    conn = sqlite3.connect(DB_PATH, timeout=20.0)
                     cursor = conn.cursor()
 
                     # Update the wallet with the signed transaction hex
@@ -4350,7 +4373,7 @@ async def broadcast_transaction_command(update: Update, context: CallbackContext
     conn = None
     result = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
 
         # First, try to find a transaction associated with the user that has a tx_hex
@@ -4398,7 +4421,7 @@ async def broadcast_transaction_command(update: Update, context: CallbackContext
         if txid:
             # Store tx_hex and txid in the database
             # First, check if this is for a wallet or a transaction
-            conn = sqlite3.connect('escrow_bot.db')
+            conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
 
             # Try to find a matching wallet
@@ -4750,7 +4773,7 @@ async def monitor_buyer_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
     try:
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             
             # Get all pending BTC transactions grouped by buyer (exclude already auto-transferred)
@@ -4902,7 +4925,7 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
     try:
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             
             # Get all pending BTC transactions with intermediary wallets
@@ -5034,7 +5057,7 @@ def setup_wallet_monitoring(wallet_id, user_id, address, crypto_type='BTC'):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         # Check if wallet is already being monitored
@@ -5090,7 +5113,7 @@ async def monitor_all_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
     try:
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             
             # Get all wallets that need monitoring
@@ -5213,7 +5236,7 @@ def disable_wallet_monitoring(wallet_id):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -5248,7 +5271,7 @@ def get_wallet_monitoring_status(user_id=None):
     """
     conn = None
     try:
-        conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
         cursor = conn.cursor()
         
         if user_id:
@@ -5317,7 +5340,7 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
         
         conn = None
         try:
-            conn = sqlite3.connect('escrow_bot.db', timeout=20.0)
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
             cursor = conn.cursor()
             
             cursor.execute('''
