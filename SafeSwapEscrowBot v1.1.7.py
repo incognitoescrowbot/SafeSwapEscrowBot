@@ -426,6 +426,11 @@ def migrate_transactions_table():
             conn.commit()
             print("Added initiator_id column to transactions table")
         
+        if 'deducted_amount' not in columns:
+            cursor.execute('ALTER TABLE transactions ADD COLUMN deducted_amount REAL DEFAULT 0.0')
+            conn.commit()
+            print("Added deducted_amount column to transactions table")
+        
         if 'last_partial_balance_notified' not in columns:
             cursor.execute('ALTER TABLE transactions ADD COLUMN last_partial_balance_notified REAL DEFAULT 0.0')
             conn.commit()
@@ -1047,7 +1052,7 @@ def add_to_pending_balance(user_id, crypto_type, amount):
 
 
 # Transaction management functions
-def create_transaction(seller_id, buyer_id, crypto_type, amount, description="", wallet_id=None, tx_hex=None, txid=None, recipient_username=None, group_id=None, intermediary_wallet_id=None, initiator_id=None):
+def create_transaction(seller_id, buyer_id, crypto_type, amount, description="", wallet_id=None, tx_hex=None, txid=None, recipient_username=None, group_id=None, intermediary_wallet_id=None, initiator_id=None, deducted_amount=0.0):
     transaction_id = str(uuid.uuid4())
     fee_amount = amount * 0.05  # 5% fee
 
@@ -1058,9 +1063,9 @@ def create_transaction(seller_id, buyer_id, crypto_type, amount, description="",
 
         cursor.execute(
             '''INSERT INTO transactions
-               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id)
+               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount)
         )
 
         conn.commit()
@@ -1218,7 +1223,8 @@ def check_duplicate_description(user_id, description):
         cursor.execute(
             '''SELECT COUNT(*) FROM transactions 
                WHERE (buyer_id = ? OR seller_id = ?) 
-               AND LOWER(description) = LOWER(?)''',
+               AND LOWER(description) = LOWER(?)
+               AND status != 'CANCELLED' ''',
             (user_id, user_id, description.strip())
         )
         
@@ -2275,14 +2281,15 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         remaining_btc_needed = 0.0  # Amount still needed if partial transfer
         partial_transfer = False
         subtract_result = None  # Initialize to track balance deduction
+        deducted_amount = 0.0  # Track the actual amount deducted from initiator's wallet
         
         if crypto_type.upper() == 'BTC':
             # Sellers: no deduction
             if role == 'seller':
-                pass  # No deduction for sellers
+                deducted_amount = 0.0  # No deduction for sellers
             # Buyers with zero balance: no deduction
             elif role == 'buyer' and current_balance == 0:
-                pass  # No deduction for buyers with zero balance
+                deducted_amount = 0.0  # No deduction for buyers with zero balance
             # Buyers with insufficient balance: partial transfer
             elif role == 'buyer' and 0 < current_balance < total:
                 # Convert balance to satoshis
@@ -2311,6 +2318,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                                 btc_transferred = transfer_result['amount_sent']
                                 remaining_btc_needed = total - btc_transferred
                                 partial_transfer = True
+                                deducted_amount = btc_transferred  # Track the partial amount deducted
                                 
                                 # Update wallet balance to reflect the transfer
                                 subtract_result = subtract_wallet_balance(wallet_id, btc_transferred)
@@ -2351,6 +2359,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 # else: balance too small, just skip deduction
             # Buyers with sufficient balance: full deduction
             elif role == 'buyer' and current_balance >= total:
+                deducted_amount = total  # Track the full amount deducted
                 subtract_result = subtract_wallet_balance(wallet_id, total)
                 if not subtract_result['success']:
                     error_msg = subtract_result.get('error', 'Unknown error')
@@ -2363,6 +2372,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     return
         else:
             # For non-BTC cryptocurrencies, keep original behavior
+            deducted_amount = total  # Track the full amount deducted for non-BTC
             subtract_result = subtract_wallet_balance(wallet_id, total)
             if not subtract_result['success']:
                 error_msg = subtract_result.get('error', 'Unknown error')
@@ -2400,7 +2410,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 txid=None,
                 recipient_username=recipient if not recipient_user_id else None,
                 intermediary_wallet_id=intermediary_wallet_id,
-                initiator_id=user.id
+                initiator_id=user.id,
+                deducted_amount=deducted_amount
             )
         else:
             transaction_id = create_transaction(
@@ -2414,7 +2425,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 txid=None,
                 recipient_username=recipient if not recipient_user_id else None,
                 intermediary_wallet_id=intermediary_wallet_id,
-                initiator_id=user.id
+                initiator_id=user.id,
+                deducted_amount=deducted_amount
             )
 
         if not transaction_id:
@@ -2902,6 +2914,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         status = transaction[6]
         wallet_id = transaction[10]
         initiator_id = transaction[19] if len(transaction) > 19 else None
+        deducted_amount = transaction[20] if len(transaction) > 20 else 0.0
         
         if initiator_id != user.id:
             await query.edit_message_text("Only the transaction initiator can cancel this transaction.")
@@ -2922,8 +2935,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             
             if initiator_wallet:
                 current_balance, current_pending = initiator_wallet
-                new_balance = current_balance + amount
-                new_pending = current_pending - amount
+                new_balance = current_balance + deducted_amount
+                new_pending = current_pending - deducted_amount
                 
                 cursor.execute(
                     'UPDATE wallets SET balance = ?, pending_balance = ? WHERE wallet_id = ?',
