@@ -435,6 +435,21 @@ def migrate_transactions_table():
             cursor.execute('ALTER TABLE transactions ADD COLUMN last_partial_balance_notified REAL DEFAULT 0.0')
             conn.commit()
             print("Added last_partial_balance_notified column to transactions table")
+        
+        if 'usd_amount' not in columns:
+            cursor.execute('ALTER TABLE transactions ADD COLUMN usd_amount REAL')
+            conn.commit()
+            print("Added usd_amount column to transactions table")
+        
+        if 'usd_fee' not in columns:
+            cursor.execute('ALTER TABLE transactions ADD COLUMN usd_fee REAL')
+            conn.commit()
+            print("Added usd_fee column to transactions table")
+        
+        if 'price_at_creation' not in columns:
+            cursor.execute('ALTER TABLE transactions ADD COLUMN price_at_creation REAL')
+            conn.commit()
+            print("Added price_at_creation column to transactions table")
     except sqlite3.Error as e:
         print(f"Database migration error: {e}")
         if conn:
@@ -1052,9 +1067,16 @@ def add_to_pending_balance(user_id, crypto_type, amount):
 
 
 # Transaction management functions
-def create_transaction(seller_id, buyer_id, crypto_type, amount, description="", wallet_id=None, tx_hex=None, txid=None, recipient_username=None, group_id=None, intermediary_wallet_id=None, initiator_id=None, deducted_amount=0.0):
+def create_transaction(seller_id, buyer_id, crypto_type, amount, description="", wallet_id=None, tx_hex=None, txid=None, recipient_username=None, group_id=None, intermediary_wallet_id=None, initiator_id=None, deducted_amount=0.0, usd_amount=None, usd_fee=None, price_at_creation=None):
     transaction_id = str(uuid.uuid4())
     fee_amount = amount * 0.05  # 5% fee
+    
+    if price_at_creation is None:
+        price_at_creation = get_crypto_price(crypto_type)
+    if usd_amount is None:
+        usd_amount = convert_crypto_to_fiat(amount, crypto_type)
+    if usd_fee is None:
+        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type)
 
     conn = None
     try:
@@ -1063,9 +1085,9 @@ def create_transaction(seller_id, buyer_id, crypto_type, amount, description="",
 
         cursor.execute(
             '''INSERT INTO transactions
-               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount)
+               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee, price_at_creation)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee, price_at_creation)
         )
 
         conn.commit()
@@ -2217,6 +2239,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         total = amount + fee
         usd_fee = usd_amount * 0.05
         usd_total = usd_amount + usd_fee
+        price_at_creation = get_crypto_price(crypto_type)
 
         recipient_user_id = get_user_id_from_username(recipient)
 
@@ -2404,7 +2427,10 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_username=recipient if not recipient_user_id else None,
                 intermediary_wallet_id=intermediary_wallet_id,
                 initiator_id=user.id,
-                deducted_amount=deducted_amount
+                deducted_amount=deducted_amount,
+                usd_amount=usd_amount,
+                usd_fee=usd_fee,
+                price_at_creation=price_at_creation
             )
         else:
             transaction_id = create_transaction(
@@ -2419,7 +2445,10 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_username=recipient if not recipient_user_id else None,
                 intermediary_wallet_id=intermediary_wallet_id,
                 initiator_id=user.id,
-                deducted_amount=deducted_amount
+                deducted_amount=deducted_amount,
+                usd_amount=usd_amount,
+                usd_fee=usd_fee,
+                price_at_creation=price_at_creation
             )
 
         if not transaction_id:
@@ -2650,14 +2679,25 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         role = "Seller" if seller_id == user.id else "Buyer"
         
-        usd_amount = convert_crypto_to_fiat(amount, crypto_type)
+        stored_usd_amount = transaction[21] if len(transaction) > 21 else None
+        stored_usd_fee = transaction[22] if len(transaction) > 22 else None
+        
+        if stored_usd_amount is not None:
+            usd_amount = stored_usd_amount
+        else:
+            usd_amount = convert_crypto_to_fiat(amount, crypto_type)
         usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
         
-        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
+        if stored_usd_fee is not None:
+            usd_fee = stored_usd_fee
+        else:
+            usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
         usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
         
         total_crypto = amount + fee_amount if fee_amount else amount
-        usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
+        usd_total = (usd_amount if stored_usd_amount is not None else 0) + (usd_fee if usd_fee else 0)
+        if usd_total == 0 or usd_amount is None:
+            usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
         usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
         
         details_text = (
