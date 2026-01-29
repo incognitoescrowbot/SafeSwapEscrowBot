@@ -2007,13 +2007,6 @@ async def deposit_command(update: Update, context: CallbackContext) -> int:
     context.user_data.clear()
     
     user = update.effective_user
-    wallets = get_user_wallets(user.id)
-
-    if not wallets:
-        await update.message.reply_text(
-            "You don't have any wallets yet. Please create a wallet first using the /wallet command."
-        )
-        return ConversationHandler.END
 
     keyboard = [
         [
@@ -2660,6 +2653,13 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         usd_amount = convert_crypto_to_fiat(amount, crypto_type)
         usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
         
+        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
+        usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
+        
+        total_crypto = amount + fee_amount if fee_amount else amount
+        usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
+        usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
+        
         details_text = (
             f"*Transaction Details*\n\n"
             f"*Transaction ID:* `{transaction_id}`\n"
@@ -2667,6 +2667,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             f"*Cryptocurrency:* {crypto_type}\n"
             f"*Amount:* {amount:.8f} {crypto_type}\n"
             f"*USD Value:* {usd_value_text}\n"
+            f"*Escrow Fee (5%):* {usd_fee_text}\n"
+            f"*Total:* {usd_total_text}\n"
             f"*Status:* {status}\n"
             f"*Created:* {creation_date}\n"
             f"*Description:* {description if description else 'N/A'}\n"
@@ -3057,7 +3059,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposited**\n\n"
                     f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
-                    f"Required (99% threshold): *{threshold_99:.8f} BTC*\n\n"
+                    f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"The seller has been notified to provide goods/services.",
                     parse_mode=ParseMode.MARKDOWN
                 )
@@ -3066,7 +3068,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposited to Escrow**\n\n"
                     f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
-                    f"Required (99% threshold): *{threshold_99:.8f} BTC*\n\n"
+                    f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Please provide the goods/services to the buyer as agreed.",
                     parse_mode=ParseMode.MARKDOWN
                 )
@@ -3078,7 +3080,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposited**\n\n"
                     f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
-                    f"Required (99% threshold): *{threshold_99:.8f} BTC*\n\n"
+                    f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"You need to deposit an additional *{shortfall:.8f} BTC* to the intermediary wallet before the seller can deliver goods/services.\n\n"
                     f"Intermediary wallet address: `{intermediary_address}`",
                     parse_mode=ParseMode.MARKDOWN
@@ -3088,7 +3090,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposited**\n\n"
                     f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
-                    f"Required (99% threshold): *{threshold_99:.8f} BTC*\n\n"
+                    f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"The buyer needs to deposit an additional *{shortfall:.8f} BTC* before you should deliver goods/services.\n\n"
                     f"Please wait for the buyer to complete their deposit.",
                     parse_mode=ParseMode.MARKDOWN
@@ -3621,7 +3623,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
                                 await query.edit_message_text(
                                     f"⚠️ Cannot release funds yet.\n\n"
                                     f"Current balance: {balance_btc:.8f} BTC\n"
-                                    f"Required (99% threshold): {threshold_99:.8f} BTC\n\n"
+                                    f"Required balance: {threshold_99:.8f} BTC\n\n"
                                     f"Please deposit an additional {shortfall:.8f} BTC to the intermediary wallet before releasing funds."
                                 )
                                 return
@@ -3973,7 +3975,7 @@ async def create_escrow_group_callback(update: Update, context: CallbackContext)
                     f"**Description:** {description}"
                     f"{partial_transfer_text}\n\n"
                     f"**Payment Method:** {crypto_type}\n"
-                    f"**Amount:** {amount:.8f} {crypto_type}\n"
+                    f"**Amount:** {amount * 1.05:.8f} {crypto_type}\n"
                     f"**USD Value:** ${usd_amount:.2f} USD\n"
                     f"**Escrow Fee (5%):** ${usd_fee:.2f} USD\n"
                     f"**Total:** ${usd_total:.2f} USD\n"
@@ -5016,7 +5018,7 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
                             try:
                                 await context.bot.send_message(
                                     chat_id=group_id,
-                                    text=f"⚠️ *Partial Deposit Detected*\n\nCurrent balance: {balance_btc:.8f} BTC\nRequired (99% threshold): {threshold_99:.8f} BTC\n\nBuyer needs to deposit an additional *{shortfall:.8f} BTC* before the seller can deliver goods/services.",
+                                    text=f"⚠️ *Partial Deposit Detected*\n\nCurrent balance: {balance_btc:.8f} BTC\nRequired balance: {threshold_99:.8f} BTC\n\nBuyer needs to deposit an additional *{shortfall:.8f} BTC* before the seller can deliver goods/services.",
                                     parse_mode='Markdown'
                                 )
                                 
@@ -5175,22 +5177,6 @@ async def monitor_all_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                         conn.commit()
                         
                         logger.info(f"Balance updated for wallet {wallet_id}: {db_balance:.8f} → {blockchain_balance:.8f} BTC (change: {balance_change:+.8f})")
-                        
-                        # Send notification to user if it's a significant change (more than 0.0001 BTC)
-                        if abs(balance_change) >= 0.0001:
-                            try:
-                                change_type = "increased" if balance_change > 0 else "decreased"
-                                await context.bot.send_message(
-                                    chat_id=user_id,
-                                    text=f"🔔 **Wallet Balance Update**\n\n"
-                                         f"Your BTC wallet balance has {change_type}:\n"
-                                         f"Address: `{address}`\n"
-                                         f"Change: {balance_change:+.8f} BTC\n"
-                                         f"New Balance: {blockchain_balance:.8f} BTC",
-                                    parse_mode='Markdown'
-                                )
-                            except Exception as notif_error:
-                                logger.error(f"Could not send balance update notification to user {user_id}: {notif_error}")
                     
                     else:
                         # Just update the last_checked timestamp
@@ -5396,7 +5382,7 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
                 message = (
                     f"✅ **Automatic Check: Sufficient BTC Deposited**\n\n"
                     f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
-                    f"Required (99% threshold): *{threshold_99:.8f} BTC*\n\n"
+                    f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Seller can now provide goods/services."
                 )
             else:
@@ -5404,7 +5390,7 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
                 message = (
                     f"⚠️ **Automatic Check: Insufficient BTC**\n\n"
                     f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
-                    f"Required (99% threshold): *{threshold_99:.8f} BTC*\n\n"
+                    f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Buyer needs to deposit an additional *{shortfall:.8f} BTC*\n\n"
                     f"Intermediary wallet address: `{intermediary_address}`"
                 )
