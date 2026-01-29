@@ -3057,19 +3057,19 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             # Sufficient balance
             if is_buyer:
                 await update.message.reply_text(
-                    f"✅ **Sufficient BTC Deposited**\n\n"
-                    f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"✅ **Sufficient BTC Deposit**\n\n"
+                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
-                    f"The seller has been notified to provide goods/services.",
+                    f"The seller has been notified to provide goods & services.",
                     parse_mode=ParseMode.MARKDOWN
                 )
             else:
                 # User is seller
                 await update.message.reply_text(
-                    f"✅ **Sufficient BTC Deposited to Escrow**\n\n"
-                    f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"✅ **Sufficient BTC Deposit**\n\n"
+                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
-                    f"Please provide the goods/services to the buyer as agreed.",
+                    f"Please provide the goods & services to the buyer as agreed.",
                     parse_mode=ParseMode.MARKDOWN
                 )
         else:
@@ -3078,20 +3078,20 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             
             if is_buyer:
                 await update.message.reply_text(
-                    f"⚠️ **Insufficient BTC Deposited**\n\n"
-                    f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"⚠️ **Insufficient BTC Deposit**\n\n"
+                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
-                    f"You need to deposit an additional *{shortfall:.8f} BTC* to the intermediary wallet before the seller can deliver goods/services.\n\n"
+                    f"You need to deposit an additional *{shortfall:.8f} BTC* to the intermediary wallet before the seller can deliver goods & services.\n\n"
                     f"Intermediary wallet address: `{intermediary_address}`",
                     parse_mode=ParseMode.MARKDOWN
                 )
             else:
                 # User is seller
                 await update.message.reply_text(
-                    f"⚠️ **Insufficient BTC Deposited**\n\n"
-                    f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"⚠️ **Insufficient BTC Deposit**\n\n"
+                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
-                    f"The buyer needs to deposit an additional *{shortfall:.8f} BTC* before you should deliver goods/services.\n\n"
+                    f"The buyer needs to deposit an additional *{shortfall:.8f} BTC* before you should deliver goods & services.\n\n"
                     f"Please wait for the buyer to complete their deposit.",
                     parse_mode=ParseMode.MARKDOWN
                 )
@@ -3982,7 +3982,7 @@ async def create_escrow_group_callback(update: Update, context: CallbackContext)
                     f"**Transaction ID:** `{transaction_id}`\n"
                     f"**BTC Wallet Address:** `{wallet_address if wallet_address else 'N/A'}`\n\n"
                     f"⚠️ **Action Required:**\n"
-                    "Buyer should run /transactions to view transaction details and either accept or decline this transaction, then seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to escrow wallet\n\nSeller should run /wallet to create a BTC wallet so that buyer can /release BTC to that seller's BTC wallet when escrow is finalized"
+                    "Buyer should run /transactions and view transaction details to either accept or decline this transaction, then seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to escrow wallet\n\nSeller should run /wallet to create a BTC wallet that buyer can /release BTC from intermediary BTC wallet to seller’s BTC wallet once goods & services are delivered"
                 )
                 
                 await telethon_client.send_message(
@@ -4891,7 +4891,7 @@ async def monitor_buyer_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                         try:
                             await context.bot.send_message(
                                 chat_id=buyer_id,
-                                text=f"✅ Successfully auto-transferred {amount_sent:.8f} BTC to escrow wallet for transaction {transaction_id}\n\nBlockchain Transaction ID: {txid}"
+                                text=f"✅ Successfully auto-transferred {amount_sent:.8f} BTC to escrow wallet for transaction ID: {transaction_id}\n\nTransaction ID: {txid}"
                             )
                         except Exception as notif_error:
                             logger.error(f"Could not send notification to buyer {buyer_id}: {notif_error}")
@@ -4986,7 +4986,7 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
                         try:
                             await context.bot.send_message(
                                 chat_id=group_id,
-                                text="✅ BTC has been deposited to escrow. Seller, please deliver the goods/services to the buyer.",
+                                text="✅ BTC has been deposited to escrow. Seller, please deliver the goods & services to the buyer.",
                                 parse_mode='Markdown'
                             )
                             
@@ -5018,7 +5018,7 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
                             try:
                                 await context.bot.send_message(
                                     chat_id=group_id,
-                                    text=f"⚠️ *Partial Deposit Detected*\n\nCurrent balance: {balance_btc:.8f} BTC\nRequired balance: {threshold_99:.8f} BTC\n\nBuyer needs to deposit an additional *{shortfall:.8f} BTC* before the seller can deliver goods/services.",
+                                    text=f"⚠️ *Partial Deposit Detected*\n\nCurrent balance: {balance_btc:.8f} BTC\nRequired balance: {threshold_99:.8f} BTC\n\nBuyer needs to deposit an additional *{shortfall:.8f} BTC* before the seller can deliver goods & services.",
                                     parse_mode='Markdown'
                                 )
                                 
@@ -5380,16 +5380,16 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
             
             if balance_btc >= threshold_99:
                 message = (
-                    f"✅ **Automatic Check: Sufficient BTC Deposited**\n\n"
-                    f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"✅ **Automatic Check: Sufficient BTC Deposit**\n\n"
+                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
-                    f"Seller can now provide goods/services."
+                    f"Seller can now provide goods & services."
                 )
             else:
                 shortfall = threshold_99 - balance_btc
                 message = (
-                    f"⚠️ **Automatic Check: Insufficient BTC**\n\n"
-                    f"Current intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"⚠️ **Automatic Check: Insufficient BTC Deposit**\n\n"
+                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Buyer needs to deposit an additional *{shortfall:.8f} BTC*\n\n"
                     f"Intermediary wallet address: `{intermediary_address}`"
