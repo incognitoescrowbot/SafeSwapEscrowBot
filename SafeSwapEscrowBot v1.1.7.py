@@ -329,7 +329,7 @@ def setup_database():
         
         # Initialize stats if they don't exist
         cursor.execute("INSERT OR IGNORE INTO stats (stat_key, stat_value) VALUES ('deals_completed', 274)")
-        cursor.execute("INSERT OR IGNORE INTO stats (stat_key, stat_value) VALUES ('disputes_resolved', 52)")
+        cursor.execute("INSERT OR IGNORE INTO stats (stat_key, stat_value) VALUES ('disputes_resolved', 55)")
 
         # Wallet monitoring table for tracking balance changes
         cursor.execute('''
@@ -358,6 +358,9 @@ def setup_database():
     finally:
         if conn:
             conn.close()
+    
+    sanitize_stat_integers()
+    enforce_disputes_constraint()
 
 
 def migrate_wallets_table():
@@ -484,13 +487,79 @@ def get_stat(stat_key):
         cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', (stat_key,))
         result = cursor.fetchone()
         if result:
-            value = result[0]
+            value = int(round(result[0]))
     except sqlite3.Error as e:
         print(f"Database error in get_stat: {e}")
     finally:
         if conn:
             conn.close()
     return value
+
+
+def sanitize_stat_integers():
+    """Ensure all stat values in database are stored as integers."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT stat_key, stat_value FROM stats')
+        stats = cursor.fetchall()
+        
+        for stat_key, stat_value in stats:
+            if stat_value is not None:
+                int_value = int(round(stat_value))
+                if stat_value != int_value:
+                    cursor.execute('''
+                        UPDATE stats 
+                        SET stat_value = ? 
+                        WHERE stat_key = ?
+                    ''', (int_value, stat_key))
+                    logger.info(f"Sanitized {stat_key} from {stat_value} to {int_value}")
+        
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error in sanitize_stat_integers: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
+def enforce_disputes_constraint():
+    """Ensure disputes_resolved is at least 20% of deals_completed."""
+    import math
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', ('deals_completed',))
+        deals_result = cursor.fetchone()
+        deals_completed = int(round(deals_result[0])) if deals_result else 0
+        
+        cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', ('disputes_resolved',))
+        disputes_result = cursor.fetchone()
+        disputes_resolved = int(round(disputes_result[0])) if disputes_result else 0
+        
+        min_disputes = int(math.ceil(deals_completed * 0.20))
+        
+        if disputes_resolved < min_disputes:
+            cursor.execute('''
+                UPDATE stats 
+                SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                WHERE stat_key = ?
+            ''', (int(min_disputes), 'disputes_resolved'))
+            conn.commit()
+            logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {min_disputes} to maintain 20% constraint")
+    except sqlite3.Error as e:
+        print(f"Database error in enforce_disputes_constraint: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
 
 
 def increment_stat(stat_key):
@@ -502,7 +571,7 @@ def increment_stat(stat_key):
         
         STAT_INITIAL_VALUES = {
             'deals_completed': 274,
-            'disputes_resolved': 52
+            'disputes_resolved': 55
         }
         initial_value = STAT_INITIAL_VALUES.get(stat_key, 0)
         
@@ -522,6 +591,9 @@ def increment_stat(stat_key):
     finally:
         if conn:
             conn.close()
+    
+    sanitize_stat_integers()
+    enforce_disputes_constraint()
 
 
 def process_pending_recipient(user_id, username):
