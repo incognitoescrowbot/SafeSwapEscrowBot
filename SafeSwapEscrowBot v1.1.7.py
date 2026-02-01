@@ -529,7 +529,7 @@ def sanitize_stat_integers():
 
 
 def enforce_disputes_constraint():
-    """Ensure disputes_resolved is at least 20% of deals_completed."""
+    """Ensure disputes_resolved is between 20% and 25% of deals_completed."""
     import math
     conn = None
     try:
@@ -545,15 +545,17 @@ def enforce_disputes_constraint():
         disputes_resolved = int(round(disputes_result[0])) if disputes_result else 0
         
         min_disputes = int(math.ceil(deals_completed * 0.20))
+        max_disputes = int(math.floor(deals_completed * 0.25))
         
-        if disputes_resolved < min_disputes:
+        if disputes_resolved < min_disputes or disputes_resolved > max_disputes:
+            target_disputes = int(deals_completed * 0.22)
             cursor.execute('''
                 UPDATE stats 
                 SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
                 WHERE stat_key = ?
-            ''', (int(min_disputes), 'disputes_resolved'))
+            ''', (int(target_disputes), 'disputes_resolved'))
             conn.commit()
-            logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {min_disputes} to maintain 20% constraint")
+            logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {target_disputes} to maintain 20-25% constraint")
     except sqlite3.Error as e:
         print(f"Database error in enforce_disputes_constraint: {e}")
         if conn:
