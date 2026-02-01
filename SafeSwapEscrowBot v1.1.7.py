@@ -361,6 +361,7 @@ def setup_database():
     
     sanitize_stat_integers()
     enforce_disputes_constraint()
+    enforce_tens_place_constraint()
 
 
 def migrate_wallets_table():
@@ -562,6 +563,51 @@ def enforce_disputes_constraint():
             conn.close()
 
 
+def enforce_tens_place_constraint():
+    """Ensure deals_completed and disputes_resolved never have the same tens digit."""
+    import math
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', ('deals_completed',))
+        deals_result = cursor.fetchone()
+        deals_completed = int(round(deals_result[0])) if deals_result else 0
+        
+        cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', ('disputes_resolved',))
+        disputes_result = cursor.fetchone()
+        disputes_resolved = int(round(disputes_result[0])) if disputes_result else 0
+        
+        deals_tens = (deals_completed // 10) % 10
+        disputes_tens = (disputes_resolved // 10) % 10
+        
+        if deals_tens == disputes_tens:
+            original_disputes = disputes_resolved
+            min_disputes = int(math.ceil(deals_completed * 0.20))
+            
+            for candidate in range(disputes_resolved, disputes_resolved + 20):
+                candidate_tens = (candidate // 10) % 10
+                if candidate_tens != deals_tens and candidate >= min_disputes:
+                    disputes_resolved = candidate
+                    break
+            
+            cursor.execute('''
+                UPDATE stats 
+                SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                WHERE stat_key = ?
+            ''', (int(disputes_resolved), 'disputes_resolved'))
+            conn.commit()
+            logger.info(f"Adjusted disputes_resolved from {original_disputes} to {disputes_resolved} to avoid matching tens place digit {deals_tens}")
+    except sqlite3.Error as e:
+        print(f"Database error in enforce_tens_place_constraint: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
 def increment_stat(stat_key):
     """Increment a stat value in the database."""
     conn = None
@@ -594,6 +640,7 @@ def increment_stat(stat_key):
     
     sanitize_stat_integers()
     enforce_disputes_constraint()
+    enforce_tens_place_constraint()
 
 
 def process_pending_recipient(user_id, username):
