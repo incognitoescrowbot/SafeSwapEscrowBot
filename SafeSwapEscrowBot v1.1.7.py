@@ -362,6 +362,7 @@ def setup_database():
     sanitize_stat_integers()
     enforce_disputes_constraint()
     enforce_tens_place_constraint()
+    enforce_ones_place_constraint()
 
 
 def migrate_wallets_table():
@@ -439,6 +440,16 @@ def migrate_transactions_table():
             cursor.execute('ALTER TABLE transactions ADD COLUMN last_partial_balance_notified REAL DEFAULT 0.0')
             conn.commit()
             print("Added last_partial_balance_notified column to transactions table")
+        
+        if 'usd_amount' not in columns:
+            cursor.execute('ALTER TABLE transactions ADD COLUMN usd_amount REAL')
+            conn.commit()
+            print("Added usd_amount column to transactions table")
+        
+        if 'usd_fee_amount' not in columns:
+            cursor.execute('ALTER TABLE transactions ADD COLUMN usd_fee_amount REAL')
+            conn.commit()
+            print("Added usd_fee_amount column to transactions table")
     except sqlite3.Error as e:
         print(f"Database migration error: {e}")
         if conn:
@@ -610,6 +621,71 @@ def enforce_tens_place_constraint():
             conn.close()
 
 
+def enforce_ones_place_constraint():
+    """Ensure both values don't end in 0 at the same time and they don't have the same ones digit."""
+    import math
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', ('deals_completed',))
+        deals_result = cursor.fetchone()
+        deals_completed = int(round(deals_result[0])) if deals_result else 0
+        
+        cursor.execute('SELECT stat_value FROM stats WHERE stat_key = ?', ('disputes_resolved',))
+        disputes_result = cursor.fetchone()
+        disputes_resolved = int(round(disputes_result[0])) if disputes_result else 0
+        
+        deals_ones = deals_completed % 10
+        disputes_ones = disputes_resolved % 10
+        
+        min_disputes = int(math.ceil(deals_completed * 0.20))
+        max_disputes = int(math.floor(deals_completed * 0.25))
+        
+        if deals_ones == 0 and disputes_ones == 0:
+            original_disputes = disputes_resolved
+            
+            for candidate in range(disputes_resolved, disputes_resolved + 20):
+                candidate_ones = candidate % 10
+                if candidate_ones != 0 and min_disputes <= candidate <= max_disputes:
+                    disputes_resolved = candidate
+                    break
+            
+            if disputes_resolved != original_disputes:
+                cursor.execute('''
+                    UPDATE stats 
+                    SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                    WHERE stat_key = ?
+                ''', (int(disputes_resolved), 'disputes_resolved'))
+                conn.commit()
+                logger.info(f"Adjusted disputes_resolved from {original_disputes} to {disputes_resolved} to prevent both values ending in 0")
+        elif disputes_ones == deals_ones and disputes_ones != 0:
+            original_disputes = disputes_resolved
+            
+            for candidate in range(disputes_resolved, disputes_resolved + 20):
+                candidate_ones = candidate % 10
+                if candidate_ones != deals_ones and min_disputes <= candidate <= max_disputes:
+                    disputes_resolved = candidate
+                    break
+            
+            if disputes_resolved != original_disputes:
+                cursor.execute('''
+                    UPDATE stats 
+                    SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                    WHERE stat_key = ?
+                ''', (int(disputes_resolved), 'disputes_resolved'))
+                conn.commit()
+                logger.info(f"Adjusted disputes_resolved from {original_disputes} to {disputes_resolved} to prevent matching ones digits")
+    except sqlite3.Error as e:
+        print(f"Database error in enforce_ones_place_constraint: {e}")
+        if conn:
+            conn.rollback()
+    finally:
+        if conn:
+            conn.close()
+
+
 def increment_stat(stat_key):
     """Increment a stat value in the database."""
     conn = None
@@ -643,6 +719,7 @@ def increment_stat(stat_key):
     sanitize_stat_integers()
     enforce_disputes_constraint()
     enforce_tens_place_constraint()
+    enforce_ones_place_constraint()
 
 
 def process_pending_recipient(user_id, username):
@@ -1173,7 +1250,7 @@ def add_to_pending_balance(user_id, crypto_type, amount):
 
 
 # Transaction management functions
-def create_transaction(seller_id, buyer_id, crypto_type, amount, description="", wallet_id=None, tx_hex=None, txid=None, recipient_username=None, group_id=None, intermediary_wallet_id=None, initiator_id=None, deducted_amount=0.0):
+def create_transaction(seller_id, buyer_id, crypto_type, amount, description="", wallet_id=None, tx_hex=None, txid=None, recipient_username=None, group_id=None, intermediary_wallet_id=None, initiator_id=None, deducted_amount=0.0, usd_amount=None, usd_fee_amount=None):
     transaction_id = str(uuid.uuid4())
     fee_amount = amount * 0.05  # 5% fee
 
@@ -1184,9 +1261,9 @@ def create_transaction(seller_id, buyer_id, crypto_type, amount, description="",
 
         cursor.execute(
             '''INSERT INTO transactions
-               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount)
+               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee_amount)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee_amount)
         )
 
         conn.commit()
@@ -2525,7 +2602,9 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_username=recipient if not recipient_user_id else None,
                 intermediary_wallet_id=intermediary_wallet_id,
                 initiator_id=user.id,
-                deducted_amount=deducted_amount
+                deducted_amount=deducted_amount,
+                usd_amount=usd_amount,
+                usd_fee_amount=usd_fee
             )
         else:
             transaction_id = create_transaction(
@@ -2540,7 +2619,9 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_username=recipient if not recipient_user_id else None,
                 intermediary_wallet_id=intermediary_wallet_id,
                 initiator_id=user.id,
-                deducted_amount=deducted_amount
+                deducted_amount=deducted_amount,
+                usd_amount=usd_amount,
+                usd_fee_amount=usd_fee
             )
 
         if not transaction_id:
@@ -2768,18 +2849,32 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         completion_date = transaction[8]
         description = transaction[9]
         initiator_id = transaction[19] if len(transaction) > 19 else None
+        stored_usd_amount = transaction[21] if len(transaction) > 21 else None
+        stored_usd_fee = transaction[22] if len(transaction) > 22 else None
         
         role = "Seller" if seller_id == user.id else "Buyer"
         
-        usd_amount = convert_crypto_to_fiat(amount, crypto_type)
-        usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
+        if stored_usd_amount is not None:
+            usd_amount = stored_usd_amount
+            usd_value_text = f"${usd_amount:.2f} USD"
+        else:
+            usd_amount = convert_crypto_to_fiat(amount, crypto_type)
+            usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
         
-        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
-        usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
+        if stored_usd_fee is not None:
+            usd_fee = stored_usd_fee
+            usd_fee_text = f"${usd_fee:.2f} USD"
+        else:
+            usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
+            usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
         
         total_crypto = amount + fee_amount if fee_amount else amount
-        usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
-        usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
+        if stored_usd_amount is not None and stored_usd_fee is not None:
+            usd_total = stored_usd_amount + stored_usd_fee
+            usd_total_text = f"${usd_total:.2f} USD"
+        else:
+            usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
+            usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
         
         details_text = (
             f"*Transaction Details*\n\n"
@@ -4610,7 +4705,7 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
     if text == "My Account":
         # Handle My Account button - show nested menu
         account_keyboard = [
-            [KeyboardButton("Escrow Wallet"), KeyboardButton("Start Trade")],
+            [KeyboardButton("Start Trade"), KeyboardButton("Escrow Wallet")],
             [KeyboardButton("Release Funds"), KeyboardButton("File Dispute")],
             [KeyboardButton("Back to Main Menu 🔙")]
         ]
