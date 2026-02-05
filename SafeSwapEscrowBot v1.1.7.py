@@ -1296,6 +1296,30 @@ def get_transaction(transaction_id):
     return transaction
 
 
+def get_pending_transactions_for_buyer(user_id):
+    conn = None
+    transactions = []
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            '''SELECT transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, 
+                      status, creation_date, description
+               FROM transactions
+               WHERE buyer_id = ? AND status = 'PENDING'
+               ORDER BY creation_date ASC''',
+            (user_id,)
+        )
+        transactions = cursor.fetchall()
+    except sqlite3.Error as e:
+        print(f"Database error in get_pending_transactions_for_buyer: {e}")
+    finally:
+        if conn:
+            conn.close()
+    return transactions
+
+
 def update_transaction_status(transaction_id, status):
     conn = None
     try:
@@ -1665,8 +1689,81 @@ async def start(update: Update, context: CallbackContext) -> None:
     if pending_result['success'] and pending_result['transactions_updated'] > 0:
         await update.message.reply_text(
             f"✅ {pending_result['transactions_updated']} pending transaction(s) have been linked to your account!\n"
-            f"Check /transactions to view them."
+            f"You will be prompted to accept or decline them."
         )
+    
+    pending_transactions = get_pending_transactions_for_buyer(user.id)
+    
+    if pending_transactions:
+        first_transaction = pending_transactions[0]
+        transaction_id = first_transaction[0]
+        seller_id = first_transaction[1]
+        crypto_type = first_transaction[3]
+        amount = first_transaction[4]
+        fee_amount = first_transaction[5]
+        creation_date = first_transaction[7]
+        description = first_transaction[8]
+        
+        conn = None
+        seller_username = "Unknown"
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=20.0)
+            cursor = conn.cursor()
+            cursor.execute('SELECT username FROM users WHERE user_id = ?', (seller_id,))
+            seller_result = cursor.fetchone()
+            if seller_result and seller_result[0]:
+                seller_username = f"@{seller_result[0]}"
+        except sqlite3.Error as e:
+            print(f"Database error: {e}")
+        finally:
+            if conn:
+                conn.close()
+        
+        usd_amount = convert_crypto_to_fiat(amount, crypto_type)
+        usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
+        
+        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
+        usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
+        
+        total_crypto = amount + fee_amount if fee_amount else amount
+        usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
+        usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
+        
+        remaining_count = len(pending_transactions) - 1
+        remaining_text = f"\n\n⚠️ You have {remaining_count} more pending transaction(s) after this one." if remaining_count > 0 else ""
+        
+        pending_message = (
+            f"⚠️ *PENDING TRANSACTION - ACTION REQUIRED*\n\n"
+            f"You have a pending transaction that requires your response.\n"
+            f"You must accept or decline this transaction before proceeding.\n\n"
+            f"*Transaction Details:*\n"
+            f"*Transaction ID:* `{transaction_id}`\n"
+            f"*From:* {seller_username}\n"
+            f"*Cryptocurrency:* {crypto_type}\n"
+            f"*Amount:* {amount:.8f} {crypto_type}\n"
+            f"*USD Value:* {usd_value_text}\n"
+            f"*Escrow Fee (5%):* {usd_fee_text}\n"
+            f"*Total:* {usd_total_text}\n"
+            f"*Created:* {creation_date}\n"
+            f"*Description:* {description if description else 'N/A'}"
+            f"{remaining_text}"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Accept", callback_data=f'accept_transaction_{transaction_id}'),
+                InlineKeyboardButton("❌ Decline", callback_data=f'decline_transaction_{transaction_id}')
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await safe_send_text(
+            update.message.reply_text,
+            pending_message,
+            parse_mode=ParseMode.MARKDOWN,
+            reply_markup=reply_markup
+        )
+        return
 
     deals_completed = get_stat('deals_completed')
     disputes_resolved = get_stat('disputes_resolved')
@@ -3033,16 +3130,6 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             if conn:
                 conn.close()
         
-        await safe_send_text(
-            query.edit_message_text,
-            f"✅ Transaction accepted!\n\n"
-            f"Transaction ID: `{transaction_id}`\n\n"
-            f"{amount:.8f} {crypto_type} has been transferred to escrow.\n"
-            f"Your new balance: {subtract_result['new_balance']:.8f} {crypto_type}\n\n"
-            f"The seller can now release the funds once the service/product is delivered.",
-            parse_mode=ParseMode.MARKDOWN
-        )
-        
         if transaction_group_id and escrow_wallet_balance >= (required_amount * 0.99):
             try:
                 await context.bot.send_message(
@@ -3058,6 +3145,88 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 )
             except Exception as e:
                 print(f"Failed to send notification to group {transaction_group_id}: {e}")
+        
+        remaining_pending = get_pending_transactions_for_buyer(user.id)
+        
+        if remaining_pending:
+            next_transaction = remaining_pending[0]
+            next_transaction_id = next_transaction[0]
+            next_seller_id = next_transaction[1]
+            next_crypto_type = next_transaction[3]
+            next_amount = next_transaction[4]
+            next_fee_amount = next_transaction[5]
+            next_creation_date = next_transaction[7]
+            next_description = next_transaction[8]
+            
+            conn_next = None
+            next_seller_username = "Unknown"
+            try:
+                conn_next = sqlite3.connect(DB_PATH, timeout=20.0)
+                cursor_next = conn_next.cursor()
+                cursor_next.execute('SELECT username FROM users WHERE user_id = ?', (next_seller_id,))
+                next_seller_result = cursor_next.fetchone()
+                if next_seller_result and next_seller_result[0]:
+                    next_seller_username = f"@{next_seller_result[0]}"
+            except sqlite3.Error as e:
+                print(f"Database error: {e}")
+            finally:
+                if conn_next:
+                    conn_next.close()
+            
+            next_usd_amount = convert_crypto_to_fiat(next_amount, next_crypto_type)
+            next_usd_value_text = f"${next_usd_amount:.2f} USD" if next_usd_amount is not None else "USD value unavailable"
+            
+            next_usd_fee = convert_crypto_to_fiat(next_fee_amount, next_crypto_type) if next_fee_amount else None
+            next_usd_fee_text = f"${next_usd_fee:.2f} USD" if next_usd_fee is not None else "USD value unavailable"
+            
+            next_total_crypto = next_amount + next_fee_amount if next_fee_amount else next_amount
+            next_usd_total = convert_crypto_to_fiat(next_total_crypto, next_crypto_type)
+            next_usd_total_text = f"${next_usd_total:.2f} USD" if next_usd_total is not None else "USD value unavailable"
+            
+            remaining_count = len(remaining_pending) - 1
+            remaining_text = f"\n\n⚠️ You have {remaining_count} more pending transaction(s) after this one." if remaining_count > 0 else ""
+            
+            next_pending_message = (
+                f"✅ Previous transaction accepted!\n\n"
+                f"⚠️ *NEXT PENDING TRANSACTION - ACTION REQUIRED*\n\n"
+                f"*Transaction Details:*\n"
+                f"*Transaction ID:* `{next_transaction_id}`\n"
+                f"*From:* {next_seller_username}\n"
+                f"*Cryptocurrency:* {next_crypto_type}\n"
+                f"*Amount:* {next_amount:.8f} {next_crypto_type}\n"
+                f"*USD Value:* {next_usd_value_text}\n"
+                f"*Escrow Fee (5%):* {next_usd_fee_text}\n"
+                f"*Total:* {next_usd_total_text}\n"
+                f"*Created:* {next_creation_date}\n"
+                f"*Description:* {next_description if next_description else 'N/A'}"
+                f"{remaining_text}"
+            )
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Accept", callback_data=f'accept_transaction_{next_transaction_id}'),
+                    InlineKeyboardButton("❌ Decline", callback_data=f'decline_transaction_{next_transaction_id}')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await safe_send_text(
+                query.edit_message_text,
+                next_pending_message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+        else:
+            await safe_send_text(
+                query.edit_message_text,
+                f"✅ Transaction accepted!\n\n"
+                f"Transaction ID: `{transaction_id}`\n\n"
+                f"{amount:.8f} {crypto_type} has been transferred to escrow.\n"
+                f"Your new balance: {subtract_result['new_balance']:.8f} {crypto_type}\n\n"
+                f"The seller can now release the funds once the service/product is delivered.\n\n"
+                f"✅ You have no more pending transactions.",
+                parse_mode=ParseMode.MARKDOWN
+            )
     
     elif data.startswith('decline_transaction_'):
         transaction_id = data.replace('decline_transaction_', '')
@@ -3109,13 +3278,85 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             if conn:
                 conn.close()
         
-        await safe_send_text(
-            query.edit_message_text,
-            f"❌ Transaction declined!\n\n"
-            f"Transaction ID: `{transaction_id}`\n\n"
-            f"The transaction has been cancelled and the seller's funds have been returned.",
-            parse_mode=ParseMode.MARKDOWN
-        )
+        remaining_pending = get_pending_transactions_for_buyer(user.id)
+        
+        if remaining_pending:
+            next_transaction = remaining_pending[0]
+            next_transaction_id = next_transaction[0]
+            next_seller_id = next_transaction[1]
+            next_crypto_type = next_transaction[3]
+            next_amount = next_transaction[4]
+            next_fee_amount = next_transaction[5]
+            next_creation_date = next_transaction[7]
+            next_description = next_transaction[8]
+            
+            conn_next = None
+            next_seller_username = "Unknown"
+            try:
+                conn_next = sqlite3.connect(DB_PATH, timeout=20.0)
+                cursor_next = conn_next.cursor()
+                cursor_next.execute('SELECT username FROM users WHERE user_id = ?', (next_seller_id,))
+                next_seller_result = cursor_next.fetchone()
+                if next_seller_result and next_seller_result[0]:
+                    next_seller_username = f"@{next_seller_result[0]}"
+            except sqlite3.Error as e:
+                print(f"Database error: {e}")
+            finally:
+                if conn_next:
+                    conn_next.close()
+            
+            next_usd_amount = convert_crypto_to_fiat(next_amount, next_crypto_type)
+            next_usd_value_text = f"${next_usd_amount:.2f} USD" if next_usd_amount is not None else "USD value unavailable"
+            
+            next_usd_fee = convert_crypto_to_fiat(next_fee_amount, next_crypto_type) if next_fee_amount else None
+            next_usd_fee_text = f"${next_usd_fee:.2f} USD" if next_usd_fee is not None else "USD value unavailable"
+            
+            next_total_crypto = next_amount + next_fee_amount if next_fee_amount else next_amount
+            next_usd_total = convert_crypto_to_fiat(next_total_crypto, next_crypto_type)
+            next_usd_total_text = f"${next_usd_total:.2f} USD" if next_usd_total is not None else "USD value unavailable"
+            
+            remaining_count = len(remaining_pending) - 1
+            remaining_text = f"\n\n⚠️ You have {remaining_count} more pending transaction(s) after this one." if remaining_count > 0 else ""
+            
+            next_pending_message = (
+                f"❌ Previous transaction declined!\n\n"
+                f"⚠️ *NEXT PENDING TRANSACTION - ACTION REQUIRED*\n\n"
+                f"*Transaction Details:*\n"
+                f"*Transaction ID:* `{next_transaction_id}`\n"
+                f"*From:* {next_seller_username}\n"
+                f"*Cryptocurrency:* {next_crypto_type}\n"
+                f"*Amount:* {next_amount:.8f} {next_crypto_type}\n"
+                f"*USD Value:* {next_usd_value_text}\n"
+                f"*Escrow Fee (5%):* {next_usd_fee_text}\n"
+                f"*Total:* {next_usd_total_text}\n"
+                f"*Created:* {next_creation_date}\n"
+                f"*Description:* {next_description if next_description else 'N/A'}"
+                f"{remaining_text}"
+            )
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Accept", callback_data=f'accept_transaction_{next_transaction_id}'),
+                    InlineKeyboardButton("❌ Decline", callback_data=f'decline_transaction_{next_transaction_id}')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await safe_send_text(
+                query.edit_message_text,
+                next_pending_message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
+        else:
+            await safe_send_text(
+                query.edit_message_text,
+                f"❌ Transaction declined!\n\n"
+                f"Transaction ID: `{transaction_id}`\n\n"
+                f"The transaction has been cancelled and the seller's funds have been returned.\n\n"
+                f"✅ You have no more pending transactions.",
+                parse_mode=ParseMode.MARKDOWN
+            )
     
     elif data.startswith('cancel_transaction_'):
         transaction_id = data.replace('cancel_transaction_', '')
@@ -4705,7 +4946,7 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
     if text == "My Account":
         # Handle My Account button - show nested menu
         account_keyboard = [
-            [KeyboardButton("Start Trade"), KeyboardButton("Escrow Wallet")],
+            [KeyboardButton("Start Trade"), KeyboardButton("My Wallet")],
             [KeyboardButton("Release Funds"), KeyboardButton("File Dispute")],
             [KeyboardButton("Back to Main Menu 🔙")]
         ]
@@ -4741,8 +4982,8 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
                 context.bot
             )
         )
-    elif text == "Escrow Wallet":
-        # Handle Create Wallet button - redirect to wallet command
+    elif text == "My Wallet":
+        # Handle My Wallet button - redirect to wallet command
         await wallet_command(update, context)
     elif text == "Start Trade":
         # Handle Deposit Funds button - create a command update to trigger the conversation handler
@@ -5725,7 +5966,7 @@ def main() -> None:
     # Register message handler for keyboard buttons
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND &
-        filters.Regex('^(My Account|Transaction History|Language|Help|Withdraw Funds|Escrow Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
+        filters.Regex('^(My Account|Transaction History|Language|Help|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
         handle_keyboard_buttons
     ), group=1)
 
