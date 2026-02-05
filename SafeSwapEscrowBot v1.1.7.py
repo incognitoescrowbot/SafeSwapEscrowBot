@@ -2421,6 +2421,9 @@ async def enter_recipient(update: Update, context: CallbackContext) -> int:
         keyboard.append(
             [InlineKeyboardButton(f"{crypto_type} ({usd_value_text} available)", callback_data=f"deposit_{crypto_type}")])
 
+    if not keyboard:
+        keyboard.append([InlineKeyboardButton("Bitcoin (BTC)", callback_data="deposit_BTC")])
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
         f"Select the cryptocurrency you want to use for this transaction:",
