@@ -2683,15 +2683,18 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         if recipient_user_id:
             pending_result = add_to_pending_balance(recipient_user_id, crypto_type, total)
             if not pending_result['success']:
-                add_back = add_to_pending_balance(user.id, crypto_type, total)
-                await safe_send_text(
-                    query.edit_message_text,
-                    f"❌ Transaction failed!\n\n"
-                    f"Reason: Failed to update recipient's pending balance\n\n"
-                    f"Your balance has been restored.",
-                    parse_mode=ParseMode.MARKDOWN
-                )
-                return
+                if crypto_type.upper() == 'BTC':
+                    pass
+                else:
+                    add_back = add_to_pending_balance(user.id, crypto_type, total)
+                    await safe_send_text(
+                        query.edit_message_text,
+                        f"❌ Transaction failed!\n\n"
+                        f"Reason: Failed to update recipient's pending balance\n\n"
+                        f"Your balance has been restored.",
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                    return
 
         if role == 'seller':
             transaction_id = create_transaction(
