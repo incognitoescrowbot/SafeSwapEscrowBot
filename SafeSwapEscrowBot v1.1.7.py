@@ -2686,12 +2686,26 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 if crypto_type.upper() == 'BTC':
                     pass
                 else:
-                    add_back = add_to_pending_balance(user.id, crypto_type, total)
+                    if deducted_amount > 0 and wallet_id is not None:
+                        try:
+                            conn_restore = sqlite3.connect(DB_PATH, timeout=20.0)
+                            cursor_restore = conn_restore.cursor()
+                            cursor_restore.execute('SELECT balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
+                            wallet_result = cursor_restore.fetchone()
+                            if wallet_result:
+                                current_bal = wallet_result[0]
+                                new_bal = current_bal + deducted_amount
+                                cursor_restore.execute('UPDATE wallets SET balance = ? WHERE wallet_id = ?', (new_bal, wallet_id))
+                                conn_restore.commit()
+                            conn_restore.close()
+                        except Exception as e:
+                            print(f"Error restoring balance: {e}")
+                    
                     await safe_send_text(
                         query.edit_message_text,
                         f"❌ Transaction failed!\n\n"
                         f"Reason: Failed to update recipient's pending balance\n\n"
-                        f"Your balance has been restored.",
+                        f"{'Your balance has been restored.' if deducted_amount > 0 else ''}",
                         parse_mode=ParseMode.MARKDOWN
                     )
                     return
@@ -2732,12 +2746,26 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             )
 
         if not transaction_id:
-            add_back = add_to_pending_balance(user.id, crypto_type, total)
+            if deducted_amount > 0 and wallet_id is not None:
+                try:
+                    conn_restore = sqlite3.connect(DB_PATH, timeout=20.0)
+                    cursor_restore = conn_restore.cursor()
+                    cursor_restore.execute('SELECT balance FROM wallets WHERE wallet_id = ?', (wallet_id,))
+                    wallet_result = cursor_restore.fetchone()
+                    if wallet_result:
+                        current_bal = wallet_result[0]
+                        new_bal = current_bal + deducted_amount
+                        cursor_restore.execute('UPDATE wallets SET balance = ? WHERE wallet_id = ?', (new_bal, wallet_id))
+                        conn_restore.commit()
+                    conn_restore.close()
+                except Exception as e:
+                    print(f"Error restoring balance: {e}")
+            
             await safe_send_text(
                 query.edit_message_text,
                 f"❌ Transaction failed!\n\n"
                 f"Reason: Failed to create transaction\n\n"
-                f"Your balance has been restored.",
+                f"{'Your balance has been restored.' if deducted_amount > 0 else ''}",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
