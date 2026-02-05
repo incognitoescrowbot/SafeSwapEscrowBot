@@ -1307,9 +1307,9 @@ def get_pending_transactions_for_buyer(user_id):
             '''SELECT transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, 
                       status, creation_date, description
                FROM transactions
-               WHERE buyer_id = ? AND status = 'PENDING'
+               WHERE buyer_id = ? AND status = 'PENDING' AND (initiator_id IS NULL OR initiator_id != ?)
                ORDER BY creation_date ASC''',
-            (user_id,)
+            (user_id, user_id)
         )
         transactions = cursor.fetchall()
     except sqlite3.Error as e:
