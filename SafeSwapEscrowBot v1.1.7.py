@@ -2541,16 +2541,20 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 conn.close()
 
         if not wallet:
-            await safe_send_text(
-                query.edit_message_text,
-                f"❌ Transaction failed!\n\n"
-                f"Reason: No wallet found for {crypto_type}\n\n"
-                f"Please create a wallet first.",
-                parse_mode=ParseMode.MARKDOWN
-            )
-            return
-
-        wallet_id, current_balance = wallet
+            if crypto_type.upper() == 'BTC':
+                wallet_id = None
+                current_balance = 0.0
+            else:
+                await safe_send_text(
+                    query.edit_message_text,
+                    f"❌ Transaction failed!\n\n"
+                    f"Reason: No wallet found for {crypto_type}\n\n"
+                    f"Please create a wallet first.",
+                    parse_mode=ParseMode.MARKDOWN
+                )
+                return
+        else:
+            wallet_id, current_balance = wallet
 
         # Create intermediary wallet for BTC transactions
         intermediary_wallet_id = None
