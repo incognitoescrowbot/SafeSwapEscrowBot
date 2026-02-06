@@ -3460,6 +3460,13 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             f"The transaction has been cancelled and your funds have been returned.",
             parse_mode=ParseMode.MARKDOWN
         )
+        
+        # Delete the message after 3 seconds to remove the button from the transactions list
+        await asyncio.sleep(3)
+        try:
+            await query.message.delete()
+        except Exception as e:
+            logger.error(f"Error deleting message: {e}")
 
 
 @with_auto_balance_refresh
@@ -3476,13 +3483,22 @@ async def transactions_command(update: Update, context: CallbackContext) -> None
     keyboard = []
     for transaction in transactions:
         transaction_id = transaction[0]
+        status = transaction[6]
         description = transaction[9]
+        
+        # Skip canceled transactions
+        if status == 'CANCELLED':
+            continue
 
         button_text = description if description else "No description"
         keyboard.append([InlineKeyboardButton(
             button_text,
             callback_data=f'view_transaction_{transaction_id}'
         )])
+
+    if not keyboard:
+        await update.message.reply_text("You don't have any active transactions.")
+        return
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
