@@ -2934,6 +2934,24 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup
             )
+    elif data == 'cancel_transaction':
+        account_keyboard = [
+            [KeyboardButton("Start Trade"), KeyboardButton("My Wallet")],
+            [KeyboardButton("Release Funds"), KeyboardButton("File Dispute")],
+            [KeyboardButton("Back to Main Menu 🔙")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(account_keyboard, resize_keyboard=True)
+        
+        await query.edit_message_text(
+            "❌ Transaction cancelled.\n\n"
+            "Returning to My Account menu...",
+            parse_mode=ParseMode.MARKDOWN
+        )
+        
+        await query.message.reply_text(
+            "My Account Options:",
+            reply_markup=reply_markup
+        )
     elif data.startswith('view_transaction_'):
         transaction_id = data.replace('view_transaction_', '')
         transaction = get_transaction(transaction_id)
