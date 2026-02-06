@@ -5,6 +5,7 @@ import sys
 import sqlite3
 import json
 import requests
+import time
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ParseMode
@@ -1027,7 +1028,7 @@ def get_wallet_balance(wallet_id):
 
 def get_btc_balance_from_blockchain(address):
     """
-    Fetch BTC balance from blockchain.com API for a given address
+    Fetch BTC balance from blockchain.com API for a given address with rate limiting and exponential backoff
 
     Args:
         address (str): Bitcoin wallet address
@@ -1053,18 +1054,32 @@ def get_btc_balance_from_blockchain(address):
         }
     ]
     
-    for api in apis:
-        try:
-            response = requests.get(api['url'], timeout=15)
-            if response.status_code == 200:
-                balance_btc = api['parser'](response)
-                print(f"Successfully fetched BTC balance from {api['name']}: {balance_btc}")
-                return balance_btc
-            else:
-                print(f"{api['name']} API error: {response.status_code}")
-        except Exception as e:
-            print(f"Error fetching BTC balance from {api['name']}: {e}")
-            continue
+    for api_index, api in enumerate(apis):
+        max_retries = 2
+        for retry in range(max_retries):
+            try:
+                response = requests.get(api['url'], timeout=15)
+                if response.status_code == 200:
+                    balance_btc = api['parser'](response)
+                    print(f"Successfully fetched BTC balance from {api['name']}: {balance_btc}")
+                    return balance_btc
+                elif response.status_code == 429 or response.status_code == 430:
+                    wait_time = (2 ** retry) * 2 + random.uniform(0, 1)
+                    print(f"{api['name']} rate limited (status {response.status_code}). Waiting {wait_time:.1f}s before retry {retry + 1}/{max_retries}")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    print(f"{api['name']} API error: {response.status_code}")
+                    break
+            except requests.exceptions.Timeout:
+                print(f"Timeout fetching from {api['name']}")
+                break
+            except Exception as e:
+                print(f"Error fetching BTC balance from {api['name']}: {e}")
+                break
+        
+        if api_index < len(apis) - 1:
+            time.sleep(1)
     
     print("All blockchain APIs failed to fetch balance")
     return None
@@ -2963,7 +2978,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         await query.edit_message_text(
             "❌ Transaction cancelled.\n\n"
-            "Returning to My Account menu...",
+            "Returning to main menu...",
             parse_mode=ParseMode.MARKDOWN
         )
         
@@ -5928,6 +5943,18 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in send_check_command_callback: {e}")
 
 
+async def shutdown_telethon():
+    """Gracefully shutdown Telethon client"""
+    global telethon_client
+    if telethon_client and telethon_client.is_connected():
+        logger.info("Disconnecting Telethon client...")
+        try:
+            await telethon_client.disconnect()
+            logger.info("Telethon client disconnected successfully")
+        except Exception as e:
+            logger.error(f"Error disconnecting Telethon client: {e}")
+
+
 def main() -> None:
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -6065,8 +6092,20 @@ def main() -> None:
     else:
         logger.warning("JobQueue not available. Install with: pip install 'python-telegram-bot[job-queue]'")
 
-    # Start the Bot
-    application.run_polling()
+    # Start the Bot with proper cleanup
+    try:
+        application.run_polling()
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt, shutting down...")
+    finally:
+        logger.info("Shutting down bot...")
+        try:
+            loop.run_until_complete(shutdown_telethon())
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+        finally:
+            loop.close()
+            logger.info("Event loop closed")
 
 
 if __name__ == '__main__':
