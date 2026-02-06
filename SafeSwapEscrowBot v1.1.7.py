@@ -5,7 +5,6 @@ import sys
 import sqlite3
 import json
 import requests
-import time
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ParseMode
@@ -1028,7 +1027,7 @@ def get_wallet_balance(wallet_id):
 
 def get_btc_balance_from_blockchain(address):
     """
-    Fetch BTC balance from blockchain.com API for a given address with rate limiting and exponential backoff
+    Fetch BTC balance from blockchain.com API for a given address
 
     Args:
         address (str): Bitcoin wallet address
@@ -1036,53 +1035,19 @@ def get_btc_balance_from_blockchain(address):
     Returns:
         float: Balance in BTC, or None if request fails
     """
-    apis = [
-        {
-            'name': 'blockchain.info',
-            'url': f"https://blockchain.info/q/addressbalance/{address}",
-            'parser': lambda r: int(r.text.strip()) / 100000000
-        },
-        {
-            'name': 'blockchair.com',
-            'url': f"https://api.blockchair.com/bitcoin/dashboards/address/{address}",
-            'parser': lambda r: r.json()['data'][address]['address']['balance'] / 100000000
-        },
-        {
-            'name': 'blockcypher.com',
-            'url': f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/balance",
-            'parser': lambda r: r.json()['balance'] / 100000000
-        }
-    ]
-    
-    for api_index, api in enumerate(apis):
-        max_retries = 2
-        for retry in range(max_retries):
-            try:
-                response = requests.get(api['url'], timeout=15)
-                if response.status_code == 200:
-                    balance_btc = api['parser'](response)
-                    print(f"Successfully fetched BTC balance from {api['name']}: {balance_btc}")
-                    return balance_btc
-                elif response.status_code == 429 or response.status_code == 430:
-                    wait_time = (2 ** retry) * 2 + random.uniform(0, 1)
-                    print(f"{api['name']} rate limited (status {response.status_code}). Waiting {wait_time:.1f}s before retry {retry + 1}/{max_retries}")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    print(f"{api['name']} API error: {response.status_code}")
-                    break
-            except requests.exceptions.Timeout:
-                print(f"Timeout fetching from {api['name']}")
-                break
-            except Exception as e:
-                print(f"Error fetching BTC balance from {api['name']}: {e}")
-                break
-        
-        if api_index < len(apis) - 1:
-            time.sleep(1)
-    
-    print("All blockchain APIs failed to fetch balance")
-    return None
+    try:
+        url = f"https://blockchain.info/q/addressbalance/{address}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            balance_satoshis = int(response.text.strip())
+            balance_btc = balance_satoshis / 100000000
+            return balance_btc
+        else:
+            print(f"Blockchain.com API error: {response.status_code}")
+            return None
+    except Exception as e:
+        print(f"Error fetching BTC balance from blockchain: {e}")
+        return None
 
 
 def update_wallet_balance(wallet_id, new_balance):
@@ -2908,7 +2873,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
                     recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-                recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
+                recipient_notification = "\nAn escrow group has been created with the recipient."
 
                 balance_after = subtract_result['new_balance'] if subtract_result else current_balance
                 await safe_send_text(
@@ -2918,16 +2883,23 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}\n\n"
-                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}\n\n",
+                    f"{recipient_info}"
+                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
                 )
+            else:
+                if role == 'seller':
+                    recipient_label = "Buyer"
+                    status_text = "⚠️ Transaction created but blockchain sync failed!\n\nWaiting for buyer to deposit funds."
+                else:
+                    recipient_label = "Seller"
+                    status_text = "⚠️ Transaction initiated but blockchain sync failed!"
                     
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
                     recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-                recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
+                recipient_notification = "\nAn escrow group has been created with the recipient."
 
                 balance_after = subtract_result['new_balance'] if subtract_result else current_balance
                 await safe_send_text(
@@ -2937,8 +2909,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}\n\n"
-                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}\n\n",
+                    f"{recipient_info}"
+                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
                 )
@@ -2953,7 +2925,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             recipient_info = f"{recipient_label}: {recipient}\n"
             if pending_result:
                 recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-            recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
+            recipient_notification = "\nAn escrow group has been created with the recipient."
 
             balance_after = subtract_result['new_balance'] if subtract_result else current_balance
             await safe_send_text(
@@ -2963,8 +2935,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 f"Amount: ${usd_amount:.2f} USD\n"
                 f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                 f"Total: ${usd_total:.2f} USD\n\n"
-                f"{recipient_info}\n\n"
-                f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}\n\n",
+                f"{recipient_info}"
+                f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup
             )
@@ -2978,7 +2950,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         
         await query.edit_message_text(
             "❌ Transaction cancelled.\n\n"
-            "Returning to main menu...",
+            "Returning to My Account menu...",
             parse_mode=ParseMode.MARKDOWN
         )
         
@@ -3475,13 +3447,6 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             f"The transaction has been cancelled and your funds have been returned.",
             parse_mode=ParseMode.MARKDOWN
         )
-        
-        # Delete the message after 3 seconds to remove the button from the transactions list
-        await asyncio.sleep(3)
-        try:
-            await query.message.delete()
-        except Exception as e:
-            logger.error(f"Error deleting message: {e}")
 
 
 @with_auto_balance_refresh
@@ -3498,22 +3463,13 @@ async def transactions_command(update: Update, context: CallbackContext) -> None
     keyboard = []
     for transaction in transactions:
         transaction_id = transaction[0]
-        status = transaction[6]
         description = transaction[9]
-        
-        # Skip canceled transactions
-        if status == 'CANCELLED':
-            continue
 
         button_text = description if description else "No description"
         keyboard.append([InlineKeyboardButton(
             button_text,
             callback_data=f'view_transaction_{transaction_id}'
         )])
-
-    if not keyboard:
-        await update.message.reply_text("You don't have any active transactions.")
-        return
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
@@ -5943,18 +5899,6 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error in send_check_command_callback: {e}")
 
 
-async def shutdown_telethon():
-    """Gracefully shutdown Telethon client"""
-    global telethon_client
-    if telethon_client and telethon_client.is_connected():
-        logger.info("Disconnecting Telethon client...")
-        try:
-            await telethon_client.disconnect()
-            logger.info("Telethon client disconnected successfully")
-        except Exception as e:
-            logger.error(f"Error disconnecting Telethon client: {e}")
-
-
 def main() -> None:
     if sys.platform == 'win32':
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -6092,20 +6036,8 @@ def main() -> None:
     else:
         logger.warning("JobQueue not available. Install with: pip install 'python-telegram-bot[job-queue]'")
 
-    # Start the Bot with proper cleanup
-    try:
-        application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("Received KeyboardInterrupt, shutting down...")
-    finally:
-        logger.info("Shutting down bot...")
-        try:
-            loop.run_until_complete(shutdown_telethon())
-        except Exception as e:
-            logger.error(f"Error during shutdown: {e}")
-        finally:
-            loop.close()
-            logger.info("Event loop closed")
+    # Start the Bot
+    application.run_polling()
 
 
 if __name__ == '__main__':
