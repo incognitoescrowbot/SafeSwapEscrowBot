@@ -2891,10 +2891,10 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             else:
                 if role == 'seller':
                     recipient_label = "Buyer"
-                    status_text = "⚠️ Transaction created but blockchain sync failed!\n\nWaiting for buyer to deposit funds."
+                    status_text = "✅ Transaction initiated!\n\nWaiting for buyer to deposit funds."
                 else:
                     recipient_label = "Seller"
-                    status_text = "⚠️ Transaction initiated but blockchain sync failed!"
+                    status_text = "✅ Transaction initiated!"
                     
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
@@ -2958,6 +2958,19 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             "My Account Options:",
             reply_markup=reply_markup
         )
+    elif data.startswith('transactions_page_'):
+        page = int(data.replace('transactions_page_', ''))
+        
+        # Get user transactions and filter out cancelled ones
+        transactions = get_user_transactions(user.id)
+        active_transactions = [t for t in transactions if t[6] != 'CANCELLED']
+        
+        if not active_transactions:
+            await query.edit_message_text("You don't have any active transactions.")
+            return
+        
+        # Show the requested page
+        await show_transactions_page(query.edit_message_text, user.id, active_transactions, page=page)
     elif data.startswith('view_transaction_'):
         transaction_id = data.replace('view_transaction_', '')
         transaction = get_transaction(transaction_id)
@@ -3447,6 +3460,13 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             f"The transaction has been cancelled and your funds have been returned.",
             parse_mode=ParseMode.MARKDOWN
         )
+        
+        # Delete the message after 3 seconds to remove it from the transactions list
+        await asyncio.sleep(3)
+        try:
+            await query.message.delete()
+        except Exception as e:
+            logger.error(f"Error deleting message: {e}")
 
 
 @with_auto_balance_refresh
@@ -3460,20 +3480,55 @@ async def transactions_command(update: Update, context: CallbackContext) -> None
         await update.message.reply_text("You don't have any transactions yet.")
         return
 
+    # Filter out cancelled transactions
+    active_transactions = [t for t in transactions if t[6] != 'CANCELLED']
+    
+    if not active_transactions:
+        await update.message.reply_text("You don't have any active transactions.")
+        return
+
+    # Show first page (page 0)
+    await show_transactions_page(update.message.reply_text, user.id, active_transactions, page=0)
+
+
+async def show_transactions_page(message_method, user_id, transactions, page=0):
+    """Display a page of transactions with pagination."""
+    TRANSACTIONS_PER_PAGE = 5
+    total_transactions = len(transactions)
+    total_pages = (total_transactions + TRANSACTIONS_PER_PAGE - 1) // TRANSACTIONS_PER_PAGE
+    
+    # Calculate start and end indices for the current page
+    start_idx = page * TRANSACTIONS_PER_PAGE
+    end_idx = min(start_idx + TRANSACTIONS_PER_PAGE, total_transactions)
+    
+    # Build keyboard with transactions for current page
     keyboard = []
-    for transaction in transactions:
+    for transaction in transactions[start_idx:end_idx]:
         transaction_id = transaction[0]
         description = transaction[9]
-
+        
         button_text = description if description else "No description"
         keyboard.append([InlineKeyboardButton(
             button_text,
             callback_data=f'view_transaction_{transaction_id}'
         )])
-
+    
+    # Add navigation buttons
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f'transactions_page_{page-1}'))
+    if page < total_pages - 1:
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f'transactions_page_{page+1}'))
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+    
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Select a transaction to view details:",
+    page_info = f"Page {page + 1}/{total_pages}" if total_pages > 1 else ""
+    message_text = f"Select a transaction to view details:\n{page_info}" if page_info else "Select a transaction to view details:"
+    
+    await message_method(
+        message_text,
         reply_markup=reply_markup
     )
 
@@ -6014,7 +6069,7 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(wallet_callback, pattern='^(create_wallet_|deposit_to_escrow|refresh_balances|confirm_wallet_BTC_segwit)'))
     application.add_handler(
-        CallbackQueryHandler(transaction_callback, pattern='^(confirm_transaction|cancel_transaction|view_transaction_|accept_transaction_|decline_transaction_)'))
+        CallbackQueryHandler(transaction_callback, pattern='^(confirm_transaction|cancel_transaction|view_transaction_|accept_transaction_|decline_transaction_|transactions_page_)'))
     application.add_handler(CallbackQueryHandler(release_callback, pattern='^(select_release_|release_|cancel_release)'))
     application.add_handler(CallbackQueryHandler(language_callback, pattern='^lang_'))
     application.add_handler(CallbackQueryHandler(create_escrow_group_callback, pattern='^create_escrow_group$'))
