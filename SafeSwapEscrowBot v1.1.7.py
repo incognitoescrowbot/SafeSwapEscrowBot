@@ -2903,18 +2903,11 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}"
-                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}",
+                    f"{recipient_info}\n\n"
+                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}\n\n",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
                 )
-            else:
-                if role == 'seller':
-                    recipient_label = "Buyer"
-                    status_text = "✅ Transaction created!\n\n⚠️ Note: Unable to verify blockchain balance at this time.\n\nWaiting for buyer to deposit funds."
-                else:
-                    recipient_label = "Seller"
-                    status_text = "✅ Transaction initiated!\n\n⚠️ Note: Unable to verify blockchain balance at this time. Use /wallet to check your current balance."
                     
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
@@ -2929,8 +2922,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}"
-                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
+                    f"{recipient_info}\n\n"
+                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}\n\n",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
                 )
@@ -2955,8 +2948,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 f"Amount: ${usd_amount:.2f} USD\n"
                 f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                 f"Total: ${usd_total:.2f} USD\n\n"
-                f"{recipient_info}"
-                f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
+                f"{recipient_info}\n\n"
+                f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}\n\n",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup
             )
