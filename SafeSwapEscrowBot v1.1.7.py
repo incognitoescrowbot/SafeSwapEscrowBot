@@ -1035,19 +1035,39 @@ def get_btc_balance_from_blockchain(address):
     Returns:
         float: Balance in BTC, or None if request fails
     """
-    try:
-        url = f"https://blockchain.info/q/addressbalance/{address}"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            balance_satoshis = int(response.text.strip())
-            balance_btc = balance_satoshis / 100000000
-            return balance_btc
-        else:
-            print(f"Blockchain.com API error: {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"Error fetching BTC balance from blockchain: {e}")
-        return None
+    apis = [
+        {
+            'name': 'blockchain.info',
+            'url': f"https://blockchain.info/q/addressbalance/{address}",
+            'parser': lambda r: int(r.text.strip()) / 100000000
+        },
+        {
+            'name': 'blockchair.com',
+            'url': f"https://api.blockchair.com/bitcoin/dashboards/address/{address}",
+            'parser': lambda r: r.json()['data'][address]['address']['balance'] / 100000000
+        },
+        {
+            'name': 'blockcypher.com',
+            'url': f"https://api.blockcypher.com/v1/btc/main/addrs/{address}/balance",
+            'parser': lambda r: r.json()['balance'] / 100000000
+        }
+    ]
+    
+    for api in apis:
+        try:
+            response = requests.get(api['url'], timeout=15)
+            if response.status_code == 200:
+                balance_btc = api['parser'](response)
+                print(f"Successfully fetched BTC balance from {api['name']}: {balance_btc}")
+                return balance_btc
+            else:
+                print(f"{api['name']} API error: {response.status_code}")
+        except Exception as e:
+            print(f"Error fetching BTC balance from {api['name']}: {e}")
+            continue
+    
+    print("All blockchain APIs failed to fetch balance")
+    return None
 
 
 def update_wallet_balance(wallet_id, new_balance):
@@ -2873,7 +2893,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
                     recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-                recipient_notification = "\nAn escrow group has been created with the recipient."
+                recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
 
                 balance_after = subtract_result['new_balance'] if subtract_result else current_balance
                 await safe_send_text(
@@ -2891,15 +2911,15 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             else:
                 if role == 'seller':
                     recipient_label = "Buyer"
-                    status_text = "⚠️ Transaction created but blockchain sync failed!\n\nWaiting for buyer to deposit funds."
+                    status_text = "✅ Transaction created!\n\n⚠️ Note: Unable to verify blockchain balance at this time.\n\nWaiting for buyer to deposit funds."
                 else:
                     recipient_label = "Seller"
-                    status_text = "⚠️ Transaction initiated but blockchain sync failed!"
+                    status_text = "✅ Transaction initiated!\n\n⚠️ Note: Unable to verify blockchain balance at this time. Use /wallet to check your current balance."
                     
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
                     recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-                recipient_notification = "\nAn escrow group has been created with the recipient."
+                recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
 
                 balance_after = subtract_result['new_balance'] if subtract_result else current_balance
                 await safe_send_text(
@@ -2925,7 +2945,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             recipient_info = f"{recipient_label}: {recipient}\n"
             if pending_result:
                 recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-            recipient_notification = "\nAn escrow group has been created with the recipient."
+            recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
 
             balance_after = subtract_result['new_balance'] if subtract_result else current_balance
             await safe_send_text(
