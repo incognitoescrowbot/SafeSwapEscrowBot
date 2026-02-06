@@ -5930,7 +5930,8 @@ def main() -> None:
             ENTERING_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_recipient)],
             CONFIRMING_TRANSACTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_transaction)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True
     )
 
     # Add conversation handler for dispute command
@@ -5945,7 +5946,8 @@ def main() -> None:
             ],
             DISPUTE_EVIDENCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, dispute_evidence)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True
     )
 
     # Add conversation handler for multisig wallet creation
@@ -5961,7 +5963,8 @@ def main() -> None:
             ENTERING_PUBLIC_KEYS: [CallbackQueryHandler(public_keys_callback, pattern='^(generate_keys|enter_keys)')],
             CONFIRMING_WALLET: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_wallet)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True
     )
 
     # Add conversation handler for withdrawal
@@ -5972,7 +5975,8 @@ def main() -> None:
             ENTERING_WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_withdraw_amount)],
             ENTERING_WALLET_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_wallet_address)]
         },
-        fallbacks=[CommandHandler('cancel', cancel)]
+        fallbacks=[CommandHandler('cancel', cancel)],
+        allow_reentry=True
     )
 
     # Register command handlers
