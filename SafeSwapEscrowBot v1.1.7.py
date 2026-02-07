@@ -1797,13 +1797,13 @@ async def start(update: Update, context: CallbackContext) -> None:
         "Keep your funds safe and pay other users with confidence.\n\n"
         f"📊 *Deals Completed:* {deals_completed:,}\n"
         f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
-        "_Tap 'Help' button for further guidance_\n\n"
+        "_Tap 'Help Section' button for further guidance_\n\n"
     )
 
     # Create a ReplyKeyboardMarkup with the required buttons
     keyboard = [
         [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
-        [KeyboardButton("Language"), KeyboardButton("Help")],
+        [KeyboardButton("Language"), KeyboardButton("Help Section")],
         [KeyboardButton("Withdraw Funds")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -5066,8 +5066,8 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
     elif text == "Language":
         # Handle Language button - redirect to language command
         await language_command(update, context)
-    elif text == "Help":
-        # Handle Help button - redirect to help command
+    elif text == "Help Section":
+        # Handle Help Section button - redirect to help command
         await help_command(update, context)
     elif text == "Withdraw Funds":
         # Handle Withdraw Funds button - create a command update to trigger the conversation handler
@@ -5135,7 +5135,7 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
         # Return to main menu
         keyboard = [
             [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
-            [KeyboardButton("Language"), KeyboardButton("Help")],
+            [KeyboardButton("Language"), KeyboardButton("Help Section")],
             [KeyboardButton("Withdraw Funds")]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
