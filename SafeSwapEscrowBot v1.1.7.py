@@ -1791,19 +1791,22 @@ async def start(update: Update, context: CallbackContext) -> None:
     deals_completed = get_stat('deals_completed')
     disputes_resolved = get_stat('disputes_resolved')
     
+    if deals_completed % 10 == 0 and disputes_resolved % 10 == 0:
+        disputes_resolved += 1
+    
     welcome_message = (
         f"Welcome to SafeSwap Escrow Bot,              {user.first_name}{f' {user.last_name}' if user.last_name else ''}!\n\n"
         "We are your trusted escrow service for secure transactions. "
         "Keep your funds safe and pay other users with confidence.\n\n"
         f"📊 *Deals Completed:* {deals_completed:,}\n"
         f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
-        "_Tap 'Help Section' button for further guidance_\n\n"
+        "_Tap 'Help Desk' button for further guidance_\n\n"
     )
 
     # Create a ReplyKeyboardMarkup with the required buttons
     keyboard = [
         [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
-        [KeyboardButton("Language"), KeyboardButton("Help Section")],
+        [KeyboardButton("Language"), KeyboardButton("Help Desk")],
         [KeyboardButton("Withdraw Funds")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -5066,8 +5069,8 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
     elif text == "Language":
         # Handle Language button - redirect to language command
         await language_command(update, context)
-    elif text == "Help Section":
-        # Handle Help Section button - redirect to help command
+    elif text == "Help Desk":
+        # Handle Help Desk button - redirect to help command
         await help_command(update, context)
     elif text == "Withdraw Funds":
         # Handle Withdraw Funds button - create a command update to trigger the conversation handler
@@ -5135,7 +5138,7 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
         # Return to main menu
         keyboard = [
             [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
-            [KeyboardButton("Language"), KeyboardButton("Help Section")],
+            [KeyboardButton("Language"), KeyboardButton("Help Desk")],
             [KeyboardButton("Withdraw Funds")]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -6075,7 +6078,7 @@ def main() -> None:
     # Register message handler for keyboard buttons
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND &
-        filters.Regex('^(My Account|Transaction History|Language|Help Section|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
+        filters.Regex('^(My Account|Transaction History|Language|Help Desk|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
         handle_keyboard_buttons
     ), group=1)
 
