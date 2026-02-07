@@ -2883,7 +2883,6 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}"
                     f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
@@ -2909,7 +2908,6 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}"
                     f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
@@ -2935,7 +2933,6 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 f"Amount: ${usd_amount:.2f} USD\n"
                 f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                 f"Total: ${usd_total:.2f} USD\n\n"
-                f"{recipient_info}"
                 f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup
