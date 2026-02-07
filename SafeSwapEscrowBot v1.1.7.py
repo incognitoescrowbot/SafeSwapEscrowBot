@@ -2873,7 +2873,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
                     recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-                recipient_notification = "\nAn escrow group has been created with the recipient."
+                recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
 
                 balance_after = subtract_result['new_balance'] if subtract_result else current_balance
                 await safe_send_text(
@@ -2883,8 +2883,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}"
-                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}",
+                    f"{recipient_info}\n\n"
+                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{balance_info}{recipient_notification}\n\n",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
                 )
@@ -2899,7 +2899,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 recipient_info = f"{recipient_label}: {recipient}\n"
                 if pending_result:
                     recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-                recipient_notification = "\nAn escrow group has been created with the recipient."
+                recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
 
                 balance_after = subtract_result['new_balance'] if subtract_result else current_balance
                 await safe_send_text(
@@ -2909,8 +2909,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     f"Amount: ${usd_amount:.2f} USD\n"
                     f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                     f"Total: ${usd_total:.2f} USD\n\n"
-                    f"{recipient_info}"
-                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
+                    f"{recipient_info}\n\n"
+                    f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}\n\n",
                     parse_mode=ParseMode.MARKDOWN,
                     reply_markup=reply_markup
                 )
@@ -2925,7 +2925,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             recipient_info = f"{recipient_label}: {recipient}\n"
             if pending_result:
                 recipient_info += f"{recipient_label} pending balance: {pending_result['new_pending_balance']:.8f} {crypto_type}\n"
-            recipient_notification = "\nAn escrow group has been created with the recipient."
+            recipient_notification = "\nAn escrow group has been created between buyer, seller, and this bot."
 
             balance_after = subtract_result['new_balance'] if subtract_result else current_balance
             await safe_send_text(
@@ -2935,8 +2935,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 f"Amount: ${usd_amount:.2f} USD\n"
                 f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
                 f"Total: ${usd_total:.2f} USD\n\n"
-                f"{recipient_info}"
-                f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}",
+                f"{recipient_info}\n\n"
+                f"Balance after deduction: {balance_after:.8f} {crypto_type}{recipient_notification}\n\n",
                 parse_mode=ParseMode.MARKDOWN,
                 reply_markup=reply_markup
             )
