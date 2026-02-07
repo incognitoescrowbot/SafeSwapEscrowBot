@@ -3620,7 +3620,8 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             if is_buyer:
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n\n"
+                    f"Escrow wallet balance:\n"
+                    f"*{balance_btc:.8f} BTC*\n\n"
                     f"The seller has been notified to provide goods & services.",
                     parse_mode=ParseMode.MARKDOWN
                 )
@@ -3628,7 +3629,8 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 # User is seller
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n\n"
+                    f"Escrow wallet balance:\n"
+                    f"*{balance_btc:.8f} BTC*\n\n"
                     f"Please provide the goods & services to the buyer as agreed.",
                     parse_mode=ParseMode.MARKDOWN
                 )
@@ -3639,7 +3641,8 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             if is_buyer:
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposit**\n\n"
-                    f"Wallet balance: *{balance_btc:.8f} BTC*\n\n"
+                    f"Escrow wallet balance:\n"
+                    f"*{balance_btc:.8f} BTC*\n\n"
                     f"You need to deposit an additional *{shortfall:.8f} BTC* to the intermediary wallet before the seller can deliver goods & services.\n\n"
                     f"Escrow wallet address: `{intermediary_address}`",
                     parse_mode=ParseMode.MARKDOWN
@@ -3648,7 +3651,8 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 # User is seller
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposit**\n\n"
-                    f"Wallet balance: *{balance_btc:.8f} BTC*\n\n"
+                    f"Escrow wallet balance:\n"
+                    f"*{balance_btc:.8f} BTC*\n\n"
                     f"The buyer needs to deposit an additional *{shortfall:.8f} BTC* before you should deliver goods & services.\n\n"
                     f"Please wait for the buyer to complete their deposit.",
                     parse_mode=ParseMode.MARKDOWN
@@ -5939,14 +5943,16 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
             if balance_btc >= threshold_99:
                 message = (
                     f"✅ **Automatic Check: Sufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n\n"
+                    f"Escrow wallet balance:\n"
+                    f"*{balance_btc:.8f} BTC*\n\n"
                     f"Seller can now provide goods & services."
                 )
             else:
                 shortfall = threshold_99 - balance_btc
                 message = (
                     f"⚠️ **Automatic Check: Insufficient BTC Deposit**\n\n"
-                    f"Wallet balance: *{balance_btc:.8f} BTC*\n\n"
+                    f"Escrow wallet balance:\n"
+                    f"*{balance_btc:.8f} BTC*\n\n"
                     f"Buyer needs to deposit an additional *{shortfall:.8f} BTC*\n\n"
                     f"Escrow wallet address: `{intermediary_address}`"
                 )
