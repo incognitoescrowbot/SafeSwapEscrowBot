@@ -3620,7 +3620,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             if is_buyer:
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance:\n"
+                    f"Escrow wallet balance:\n\n"
                     f"*{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"The seller has been notified to provide goods & services.",
@@ -3630,7 +3630,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 # User is seller
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance:\n"
+                    f"Escrow wallet balance:\n\n"
                     f"*{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Please provide the goods & services to the buyer as agreed.",
@@ -3643,7 +3643,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             if is_buyer:
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance:\n"
+                    f"Escrow wallet balance:\n\n"
                     f"*{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"You need to deposit an additional *{shortfall:.8f} BTC* to the intermediary wallet before the seller can deliver goods & services.\n\n"
@@ -3654,7 +3654,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 # User is seller
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposit**\n\n"
-                    f"Escrow wallet balance:\n"
+                    f"Escrow wallet balance:\n\n"
                     f"*{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"The buyer needs to deposit an additional *{shortfall:.8f} BTC* before you should deliver goods & services.\n\n"
