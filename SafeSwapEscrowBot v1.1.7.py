@@ -4544,7 +4544,7 @@ async def create_escrow_group_callback(update: Update, context: CallbackContext)
                     f"**Transaction ID:** `{transaction_id}`\n"
                     f"**BTC Wallet Address:** `{wallet_address if wallet_address else 'N/A'}`\n\n"
                     f"⚠️ **Action Required:**\n"
-                    "Seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet.\n\nBuyer should run /release command to transfer BTC to that seller's BTC wallet once goods & services are received."
+                    "Seller can run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet\n\nBuyer can run /release command to transfer BTC from escrow BTC wallet to seller's BTC wallet once goods & services are received"
                 )
                 
                 await telethon_client.send_message(
