@@ -1027,27 +1027,50 @@ def get_wallet_balance(wallet_id):
 
 def get_btc_balance_from_blockchain(address):
     """
-    Fetch BTC balance from blockchain.com API for a given address
+    Fetch BTC balance from blockchain APIs for a given address with multiple fallbacks
 
     Args:
         address (str): Bitcoin wallet address
 
     Returns:
-        float: Balance in BTC, or None if request fails
+        float: Balance in BTC, or None if all requests fail
     """
-    try:
-        url = f"https://blockchain.info/q/addressbalance/{address}"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            balance_satoshis = int(response.text.strip())
-            balance_btc = balance_satoshis / 100000000
-            return balance_btc
-        else:
-            print(f"Blockchain.com API error: {response.status_code}")
-            return None
-    except Exception as e:
-        print(f"Error fetching BTC balance from blockchain: {e}")
-        return None
+    apis = [
+        {
+            'name': 'Blockchain.info',
+            'url': f"https://blockchain.info/q/addressbalance/{address}",
+            'parser': lambda r: int(r.text.strip()) / 100000000
+        },
+        {
+            'name': 'Blockstream',
+            'url': f"https://blockstream.info/api/address/{address}",
+            'parser': lambda r: (r.json().get('chain_stats', {}).get('funded_txo_sum', 0) - 
+                                r.json().get('chain_stats', {}).get('spent_txo_sum', 0)) / 100000000
+        },
+        {
+            'name': 'Mempool.space',
+            'url': f"https://mempool.space/api/address/{address}",
+            'parser': lambda r: (r.json().get('chain_stats', {}).get('funded_txo_sum', 0) - 
+                                r.json().get('chain_stats', {}).get('spent_txo_sum', 0)) / 100000000
+        }
+    ]
+    
+    for api in apis:
+        try:
+            logger.info(f"Attempting to fetch balance from {api['name']} for address {address}")
+            response = requests.get(api['url'], timeout=15)
+            if response.status_code == 200:
+                balance_btc = api['parser'](response)
+                logger.info(f"Successfully fetched balance from {api['name']}: {balance_btc} BTC")
+                return balance_btc
+            else:
+                logger.warning(f"{api['name']} API error: {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error fetching BTC balance from {api['name']}: {e}")
+            continue
+    
+    logger.error(f"All blockchain APIs failed for address {address}")
+    return None
 
 
 def update_wallet_balance(wallet_id, new_balance):
