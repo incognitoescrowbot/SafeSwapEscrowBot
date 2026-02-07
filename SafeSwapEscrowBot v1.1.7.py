@@ -2803,7 +2803,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                     buyer_seller_text = f"*Seller:* {user.first_name or user.username}\n*Buyer:* {recipient}"
                 else:
                     buyer_user_id = user.id
-                    action_text = "Buyer should run /transactions to view transaction details and either accept or decline this transaction, then seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to escrow wallet\n\nSeller should run /wallet to create a BTC wallet so that buyer can /release BTC to that seller's BTC wallet when escrow is finalized"
+                    action_text = "Seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet\n\nBuyer should run /release command to transfer BTC to that seller's BTC wallet once goods & services are received."
                     buyer_seller_text = f"*Buyer:* {user.first_name or user.username}\n*Seller:* {recipient}"
 
                 await context.bot.send_message(
@@ -4521,7 +4521,7 @@ async def create_escrow_group_callback(update: Update, context: CallbackContext)
                     f"**Transaction ID:** `{transaction_id}`\n"
                     f"**BTC Wallet Address:** `{wallet_address if wallet_address else 'N/A'}`\n\n"
                     f"⚠️ **Action Required:**\n"
-                    "Buyer should run /transactions and view transaction details to either accept or decline this transaction, then seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to escrow wallet\n\nSeller should run /wallet to create a BTC wallet that buyer can /release BTC from intermediary BTC wallet to seller’s BTC wallet once goods & services are delivered"
+                    "Seller should run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet.\n\nBuyer should run /release command to transfer BTC to that seller's BTC wallet once goods & services are received."
                 )
                 
                 await telethon_client.send_message(
