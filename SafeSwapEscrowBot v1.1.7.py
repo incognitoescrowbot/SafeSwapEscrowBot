@@ -3597,12 +3597,12 @@ async def check_command(update: Update, context: CallbackContext) -> None:
         
         intermediary_address = intermediary_result[0]
         
-        # Check intermediary wallet balance from blockchain
+        # Check escrow wallet balance from blockchain
         balance_btc = get_btc_balance_from_blockchain(intermediary_address)
         
         if balance_btc is None:
             await update.message.reply_text(
-                "❌ Error: Could not fetch intermediary wallet balance from blockchain. Please try again later.",
+                "❌ Error: Could not fetch escrow wallet balance from blockchain. Please try again later.",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
@@ -3620,7 +3620,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             if is_buyer:
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposit**\n\n"
-                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"The seller has been notified to provide goods & services.",
                     parse_mode=ParseMode.MARKDOWN
@@ -3629,7 +3629,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 # User is seller
                 await update.message.reply_text(
                     f"✅ **Sufficient BTC Deposit**\n\n"
-                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Please provide the goods & services to the buyer as agreed.",
                     parse_mode=ParseMode.MARKDOWN
@@ -3641,7 +3641,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             if is_buyer:
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposit**\n\n"
-                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"You need to deposit an additional *{shortfall:.8f} BTC* to the intermediary wallet before the seller can deliver goods & services.\n\n"
                     f"Intermediary wallet address: `{intermediary_address}`",
@@ -3651,7 +3651,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                 # User is seller
                 await update.message.reply_text(
                     f"⚠️ **Insufficient BTC Deposit**\n\n"
-                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"The buyer needs to deposit an additional *{shortfall:.8f} BTC* before you should deliver goods & services.\n\n"
                     f"Please wait for the buyer to complete their deposit.",
@@ -4190,7 +4190,7 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
                                 )
                                 return
                     except Exception as balance_error:
-                        logger.error(f"Error checking intermediary wallet balance: {balance_error}")
+                        logger.error(f"Error checking escrow wallet balance: {balance_error}")
             except sqlite3.Error as e:
                 logger.error(f"Database error checking intermediary wallet: {e}")
             finally:
@@ -5438,7 +5438,7 @@ async def monitor_buyer_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                             WHERE transaction_id = ?
                         ''', (transaction_id,))
                         
-                        # Update intermediary wallet balance
+                        # Update escrow wallet balance
                         cursor.execute('''
                             UPDATE wallets 
                             SET balance = balance + ?
@@ -5531,7 +5531,7 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
                 
                 intermediary_address = intermediary_result[0]
                 
-                # Check intermediary wallet balance from blockchain
+                # Check escrow wallet balance from blockchain
                 try:
                     balance_btc = get_btc_balance_from_blockchain(intermediary_address)
                     
@@ -5598,7 +5598,7 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
                                 logger.error(f"Could not send partial notification to group {group_id}: {notif_error}")
                 
                 except Exception as balance_error:
-                    logger.error(f"Error checking intermediary wallet balance for transaction {transaction_id}: {balance_error}")
+                    logger.error(f"Error checking escrow wallet balance for transaction {transaction_id}: {balance_error}")
                     continue
                     
         except sqlite3.Error as db_error:
@@ -5932,7 +5932,7 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
             if balance_btc is None:
                 await context.bot.send_message(
                     chat_id=group_id,
-                    text="❌ Error: Could not fetch intermediary wallet balance from blockchain.",
+                    text="❌ Error: Could not fetch escrow wallet balance from blockchain.",
                     parse_mode='Markdown'
                 )
                 return
@@ -5943,7 +5943,7 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
             if balance_btc >= threshold_99:
                 message = (
                     f"✅ **Automatic Check: Sufficient BTC Deposit**\n\n"
-                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Seller can now provide goods & services."
                 )
@@ -5951,7 +5951,7 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
                 shortfall = threshold_99 - balance_btc
                 message = (
                     f"⚠️ **Automatic Check: Insufficient BTC Deposit**\n\n"
-                    f"Intermediary wallet balance: *{balance_btc:.8f} BTC*\n"
+                    f"Escrow wallet balance: *{balance_btc:.8f} BTC*\n"
                     f"Required balance: *{threshold_99:.8f} BTC*\n\n"
                     f"Buyer needs to deposit an additional *{shortfall:.8f} BTC*\n\n"
                     f"Intermediary wallet address: `{intermediary_address}`"
@@ -6075,7 +6075,7 @@ def main() -> None:
     # Register message handler for keyboard buttons
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND &
-        filters.Regex('^(My Account|Transaction History|Language|Help|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
+        filters.Regex('^(My Account|Transaction History|Language|Help Section|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
         handle_keyboard_buttons
     ), group=1)
 
