@@ -1917,7 +1917,7 @@ async def wallet_command(update: Update, context: CallbackContext) -> None:
             ]
         ]
         
-        if user.username and user.username.lower() == 'safeswapescrow':
+        if user.username and user.username.lower() == 'safeswapsupport':
             keyboard.append([InlineKeyboardButton("Delete", callback_data='delete_wallet')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2306,7 +2306,7 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
             ]
         ]
         
-        if user.username and user.username.lower() == 'safeswapescrow':
+        if user.username and user.username.lower() == 'safeswapsupport':
             keyboard.append([InlineKeyboardButton("Delete", callback_data='delete_wallet')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
@@ -2318,7 +2318,7 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
         )
         return
     elif data == 'delete_wallet':
-        if not (user.username and user.username.lower() == 'safeswapescrow'):
+        if not (user.username and user.username.lower() == 'safeswapsupport'):
             await query.edit_message_text("❌ You are not authorized to delete wallets.")
             return
         
