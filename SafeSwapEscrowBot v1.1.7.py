@@ -1918,7 +1918,6 @@ async def wallet_command(update: Update, context: CallbackContext) -> None:
 
         keyboard = [
             [
-                InlineKeyboardButton("Deposit to Escrow", callback_data='deposit_to_escrow'),
                 InlineKeyboardButton("Refresh Balances", callback_data='refresh_balances')
             ]
         ]
@@ -2055,7 +2054,7 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
                     
                     if remaining_after_deposit > 0.00000001:
                         success_msg += f"Still needed: {remaining_after_deposit:.8f} BTC\n\n"
-                        success_msg += f"You can make additional deposits using the 'Deposit to Escrow' button.\n\n"
+                        success_msg += f"Additional deposits to your BTC wallet will be automatically transferred to escrow.\n\n"
                     else:
                         success_msg += f"\n✅ Transaction fully funded!\n\n"
                     
@@ -2305,7 +2304,6 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
 
         keyboard = [
             [
-                InlineKeyboardButton("Deposit to Escrow", callback_data='deposit_to_escrow'),
                 InlineKeyboardButton("Refresh Balances", callback_data='refresh_balances')
             ]
         ]
@@ -2844,7 +2842,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                         f"*Escrow fee (5%):* ${usd_fee:.2f} USD\n"
                         f"*Total:* ${usd_total:.2f} USD\n"
                         f"*Transaction ID:* `{transaction_id}`\n"
-                        f"*BTC Wallet Address:* `{intermediary_wallet_address if intermediary_wallet_address else 'N/A'}`\n\n"
+                        f"*Escrow Wallet Address:* `{intermediary_wallet_address if intermediary_wallet_address else 'N/A'}`\n\n"
                         f"*Description:* {description}\n\n"
                         f"⚠️ *Action Required:*\n"
                         f"{action_text}"
@@ -3893,7 +3891,7 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
                 f"✅ Withdrawal successful!\n\n"
                 f"Amount sent: {amount_sent:.8f} BTC\n"
                 f"Transaction fee: {fee_paid:.8f} BTC\n\n"
-                f"BTC wallet address: {address}\n\n"
+                f"BTC Wallet Address: {address}\n\n"
                 f"Transaction ID: {result['txid']}\n\n"
                 f"Your funds have been sent!"
             )
@@ -4573,7 +4571,7 @@ async def create_escrow_group_callback(update: Update, context: CallbackContext)
                     f"**Escrow Fee (5%):** ${usd_fee:.2f} USD\n"
                     f"**Total:** ${usd_total:.2f} USD\n"
                     f"**Transaction ID:** `{transaction_id}`\n"
-                    f"**BTC Wallet Address:** `{wallet_address if wallet_address else 'N/A'}`\n\n"
+                    f"**Escrow Wallet Address:** `{wallet_address if wallet_address else 'N/A'}`\n\n"
                     f"⚠️ **Action Required:**\n"
                     "Seller can run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet.\n\nBuyer can run /release command to transfer BTC from escrow BTC wallet to seller's BTC wallet once goods & services are delivered to the buyer as described."
                 )
