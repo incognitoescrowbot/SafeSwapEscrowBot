@@ -2359,7 +2359,7 @@ async def select_role(update: Update, context: CallbackContext) -> int:
 
     await query.edit_message_text(
         f"You selected: {role.capitalize()}\n\n"
-        f"Please enter the Telegram username of the {other_party} (e.g., @username):"
+        f"Please enter Telegram username of the {other_party} (e.g., @username):"
     )
 
     return ENTERING_RECIPIENT
@@ -2377,8 +2377,8 @@ async def select_crypto(update: Update, context: CallbackContext) -> int:
     price_info = f"Current {crypto_type} price: ${price:.2f} USD" if price is not None else "Price information unavailable"
 
     await query.edit_message_text(
-        f"You selected {crypto_type}. {price_info}\n\n"
-        f"Please enter the USD value of the amount of BTC that will be deposited to escrow:"
+        f"{price_info}\n\n"
+        f"Please enter USD value of the amount of BTC that will be deposited to escrow:"
     )
 
     return ENTERING_AMOUNT
@@ -2417,7 +2417,7 @@ async def enter_amount(update: Update, context: CallbackContext) -> int:
             f"Transaction amount: ${usd_amount:.2f} USD\n"
             f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
             f"Total: ${usd_total:.2f} USD\n\n"
-            "Please enter a description for this transaction (e.g., 'Payment for design services'):"
+            "Please enter a description for this transaction (e.g., 'Escrow payment'):"
         )
 
         return CONFIRMING_TRANSACTION
@@ -2452,7 +2452,7 @@ async def enter_recipient(update: Update, context: CallbackContext) -> int:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        f"Select the cryptocurrency you want to use for this transaction:",
+        f"Select BTC wallet you want to use for this transaction:",
         reply_markup=reply_markup
     )
 
@@ -3719,7 +3719,7 @@ async def withdraw_command(update: Update, context: CallbackContext) -> int:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "Select the BTC wallet you want to withdraw from:",
+        "Select BTC wallet to withdraw from:",
         reply_markup=reply_markup
     )
     
@@ -3812,7 +3812,7 @@ async def enter_withdraw_amount(update: Update, context: CallbackContext) -> int
         
         await update.message.reply_text(
             f"Amount to withdraw: {amount:.8f} BTC\n\n"
-            f"Please enter the BTC wallet address where you want to receive the funds:"
+            f"Please enter BTC wallet address where these funds will be withdrawn to:"
         )
         
         return ENTERING_WALLET_ADDRESS
@@ -3831,8 +3831,8 @@ async def withdraw_max_amount(update: Update, context: CallbackContext) -> int:
     context.user_data['withdraw_max'] = True
     
     await query.edit_message_text(
-        "You selected to withdraw the maximum amount.\n\n"
-        "Please enter the BTC wallet address where you want to receive the funds:"
+        "You selected to withdraw maximum amount.\n\n"
+        "Please enter BTC wallet address where these funds will be withdrawn to:"
     )
     
     return ENTERING_WALLET_ADDRESS
@@ -3892,8 +3892,8 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
             await update.message.reply_text(
                 f"✅ Withdrawal successful!\n\n"
                 f"Amount sent: {amount_sent:.8f} BTC\n"
-                f"Transaction fee: {fee_paid:.8f} BTC\n"
-                f"To address: {address}\n"
+                f"Transaction fee: {fee_paid:.8f} BTC\n\n"
+                f"BTC wallet address: {address}\n\n"
                 f"Transaction ID: {result['txid']}\n\n"
                 f"Your funds have been sent!"
             )
@@ -4575,7 +4575,7 @@ async def create_escrow_group_callback(update: Update, context: CallbackContext)
                     f"**Transaction ID:** `{transaction_id}`\n"
                     f"**BTC Wallet Address:** `{wallet_address if wallet_address else 'N/A'}`\n\n"
                     f"⚠️ **Action Required:**\n"
-                    "Seller can run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet\n\nBuyer can run /release command to transfer BTC from escrow BTC wallet to seller's BTC wallet once goods & services are received"
+                    "Seller can run /check command to see if a buyer has deposited a sufficient amount of BTC to the escrow wallet.\n\nBuyer can run /release command to transfer BTC from escrow BTC wallet to seller's BTC wallet once goods & services are delivered to the buyer as described."
                 )
                 
                 await telethon_client.send_message(
