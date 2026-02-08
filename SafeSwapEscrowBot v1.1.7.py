@@ -6159,7 +6159,7 @@ def main() -> None:
 
     # Register callback query handlers
     application.add_handler(
-        CallbackQueryHandler(wallet_callback, pattern='^(create_wallet_|deposit_to_escrow|refresh_balances|confirm_wallet_BTC_segwit)'))
+        CallbackQueryHandler(wallet_callback, pattern='^(create_wallet_|deposit_to_escrow|refresh_balances|confirm_wallet_BTC_segwit|delete_wallet)'))
     application.add_handler(
         CallbackQueryHandler(transaction_callback, pattern='^(confirm_transaction|cancel_transaction|view_transaction_|accept_transaction_|decline_transaction_|transactions_page_)'))
     application.add_handler(CallbackQueryHandler(release_callback, pattern='^(select_release_|release_|cancel_release)'))
