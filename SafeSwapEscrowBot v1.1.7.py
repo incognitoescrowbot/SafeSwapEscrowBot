@@ -6,6 +6,7 @@ import sqlite3
 import json
 import requests
 from datetime import datetime, timedelta
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.constants import ParseMode
 import re
@@ -61,6 +62,9 @@ SELECTING_WITHDRAW_WALLET, ENTERING_WITHDRAW_AMOUNT, ENTERING_WALLET_ADDRESS = r
 app = None
 telethon_client = None
 
+# Database write lock to prevent concurrent database writes
+db_write_lock = threading.Lock()
+
 # Welcome Video URL
 WELCOME_VIDEO_URL = os.getenv('WELCOME_VIDEO_URL', '')
 
@@ -76,6 +80,40 @@ else:
 logger.info(f"Using database path: {DB_PATH}")
 
 # Database setup
+class DatabaseConnection:
+    """Context manager for database connections with write locking."""
+    
+    def __init__(self, db_path, timeout=20.0, use_write_lock=True):
+        self.db_path = db_path
+        self.timeout = timeout
+        self.use_write_lock = use_write_lock
+        self.conn = None
+        self.lock_acquired = False
+    
+    def __enter__(self):
+        if self.use_write_lock:
+            db_write_lock.acquire()
+            self.lock_acquired = True
+        self.conn = sqlite3.connect(self.db_path, timeout=self.timeout)
+        return self.conn
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type is None:
+                try:
+                    self.conn.commit()
+                except Exception as e:
+                    logger.error(f"Error committing transaction: {e}")
+                    self.conn.rollback()
+            else:
+                self.conn.rollback()
+            self.conn.close()
+        
+        if self.lock_acquired:
+            db_write_lock.release()
+        
+        return False
+
 def escape_markdown(text):
     """Escape special characters for Markdown formatting."""
     if text is None:
@@ -688,33 +726,25 @@ def enforce_ones_place_constraint():
 
 def increment_stat(stat_key):
     """Increment a stat value in the database."""
-    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=20.0)
-        cursor = conn.cursor()
-        
-        STAT_INITIAL_VALUES = {
-            'deals_completed': 274,
-            'disputes_resolved': 55
-        }
-        initial_value = STAT_INITIAL_VALUES.get(stat_key, 0)
-        
-        cursor.execute('''
-            INSERT INTO stats (stat_key, stat_value, last_updated)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(stat_key) DO UPDATE 
-            SET stat_value = stat_value + 1, 
-                last_updated = CURRENT_TIMESTAMP
-        ''', (stat_key, initial_value))
-        
-        conn.commit()
+        with DatabaseConnection(DB_PATH) as conn:
+            cursor = conn.cursor()
+            
+            STAT_INITIAL_VALUES = {
+                'deals_completed': 274,
+                'disputes_resolved': 55
+            }
+            initial_value = STAT_INITIAL_VALUES.get(stat_key, 0)
+            
+            cursor.execute('''
+                INSERT INTO stats (stat_key, stat_value, last_updated)
+                VALUES (?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(stat_key) DO UPDATE 
+                SET stat_value = stat_value + 1, 
+                    last_updated = CURRENT_TIMESTAMP
+            ''', (stat_key, initial_value))
     except sqlite3.Error as e:
         print(f"Database error in increment_stat: {e}")
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
     
     sanitize_stat_integers()
     enforce_disputes_constraint()
@@ -1084,26 +1114,17 @@ def update_wallet_balance(wallet_id, new_balance):
     Returns:
         bool: True if successful, False otherwise
     """
-    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=20.0)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            'UPDATE wallets SET balance = ? WHERE wallet_id = ?',
-            (new_balance, wallet_id)
-        )
-
-        conn.commit()
+        with DatabaseConnection(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE wallets SET balance = ? WHERE wallet_id = ?',
+                (new_balance, wallet_id)
+            )
         return True
     except sqlite3.Error as e:
         print(f"Database error updating wallet balance: {e}")
-        if conn:
-            conn.rollback()
         return False
-    finally:
-        if conn:
-            conn.close()
 
 
 def sync_blockchain_balance(wallet_id):
@@ -1277,27 +1298,18 @@ def create_transaction(seller_id, buyer_id, crypto_type, amount, description="",
     transaction_id = str(uuid.uuid4())
     fee_amount = amount * 0.05  # 5% fee
 
-    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=20.0)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            '''INSERT INTO transactions
-               (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee_amount)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-            (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee_amount)
-        )
-
-        conn.commit()
+        with DatabaseConnection(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                '''INSERT INTO transactions
+                   (transaction_id, seller_id, buyer_id, crypto_type, amount, fee_amount, status, creation_date, description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee_amount)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (transaction_id, seller_id, buyer_id, crypto_type.upper(), amount, fee_amount, 'PENDING', datetime.now().isoformat(), description, wallet_id, tx_hex, txid, recipient_username, group_id, intermediary_wallet_id, initiator_id, deducted_amount, usd_amount, usd_fee_amount)
+            )
     except sqlite3.Error as e:
         print(f"Database error in create_transaction: {e}")
-        if conn:
-            conn.rollback()
         return None
-    finally:
-        if conn:
-            conn.close()
 
     return transaction_id
 
@@ -1344,52 +1356,35 @@ def get_pending_transactions_for_buyer(user_id):
 
 
 def update_transaction_status(transaction_id, status):
-    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=20.0)
-        cursor = conn.cursor()
+        with DatabaseConnection(DB_PATH) as conn:
+            cursor = conn.cursor()
 
-        if status == 'COMPLETED':
-            cursor.execute(
-                'UPDATE transactions SET status = ?, completion_date = ? WHERE transaction_id = ?',
-                (status, datetime.now().isoformat(), transaction_id)
-            )
-            increment_stat('deals_completed')
-        else:
-            cursor.execute(
-                'UPDATE transactions SET status = ? WHERE transaction_id = ?',
-                (status, transaction_id)
-            )
-
-        conn.commit()
+            if status == 'COMPLETED':
+                cursor.execute(
+                    'UPDATE transactions SET status = ?, completion_date = ? WHERE transaction_id = ?',
+                    (status, datetime.now().isoformat(), transaction_id)
+                )
+                increment_stat('deals_completed')
+            else:
+                cursor.execute(
+                    'UPDATE transactions SET status = ? WHERE transaction_id = ?',
+                    (status, transaction_id)
+                )
     except sqlite3.Error as e:
         print(f"Database error in update_transaction_status: {e}")
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
 
 
 def update_transaction_group_id(transaction_id, group_id):
-    conn = None
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=20.0)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            'UPDATE transactions SET group_id = ? WHERE transaction_id = ?',
-            (group_id, transaction_id)
-        )
-
-        conn.commit()
+        with DatabaseConnection(DB_PATH) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE transactions SET group_id = ? WHERE transaction_id = ?',
+                (group_id, transaction_id)
+            )
     except sqlite3.Error as e:
         print(f"Database error in update_transaction_group_id: {e}")
-        if conn:
-            conn.rollback()
-    finally:
-        if conn:
-            conn.close()
 
 def get_user_transactions(user_id):
     conn = None
@@ -1921,6 +1916,9 @@ async def wallet_command(update: Update, context: CallbackContext) -> None:
                 InlineKeyboardButton("Refresh Balances", callback_data='refresh_balances')
             ]
         ]
+        
+        if user.username and user.username.lower() == 'safeswapescrow':
+            keyboard.append([InlineKeyboardButton("Delete", callback_data='delete_wallet')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await safe_send_text(
@@ -2307,6 +2305,9 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
                 InlineKeyboardButton("Refresh Balances", callback_data='refresh_balances')
             ]
         ]
+        
+        if user.username and user.username.lower() == 'safeswapescrow':
+            keyboard.append([InlineKeyboardButton("Delete", callback_data='delete_wallet')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await safe_send_text(
@@ -2315,6 +2316,39 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
             reply_markup=reply_markup,
             parse_mode=ParseMode.MARKDOWN
         )
+        return
+    elif data == 'delete_wallet':
+        if not (user.username and user.username.lower() == 'safeswapescrow'):
+            await query.edit_message_text("❌ You are not authorized to delete wallets.")
+            return
+        
+        wallets = get_user_wallets(user.id)
+        if not wallets:
+            await query.edit_message_text("❌ You don't have any wallets to delete.")
+            return
+        
+        btc_wallet = None
+        for wallet in wallets:
+            if wallet[1] == 'BTC':
+                btc_wallet = wallet
+                break
+        
+        if not btc_wallet:
+            await query.edit_message_text("❌ No BTC wallet found to delete.")
+            return
+        
+        wallet_id = btc_wallet[0]
+        
+        try:
+            with DatabaseConnection(DB_PATH) as conn:
+                cursor = conn.cursor()
+                cursor.execute('DELETE FROM wallets WHERE wallet_id = ?', (wallet_id,))
+                logger.info(f"User {user.id} ({user.username}) deleted BTC wallet {wallet_id}")
+            
+            await query.edit_message_text(f"✅ BTC wallet deleted successfully.\n\nWallet ID: {wallet_id}")
+        except sqlite3.Error as db_error:
+            logger.error(f"Database error deleting wallet: {db_error}")
+            await query.edit_message_text(f"❌ Database error: {db_error}")
         return
 
 
@@ -5453,28 +5487,34 @@ async def monitor_buyer_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                         amount_sent = transfer_result['amount_sent']
                         txid = transfer_result['txid']
                         
-                        # Update buyer's wallet balance in database
-                        cursor.execute('''
-                            UPDATE wallets 
-                            SET balance = balance - ?
-                            WHERE wallet_id = ?
-                        ''', (amount_sent, buyer_wallet_id))
-                        
-                        # Mark transaction as auto-transferred
-                        cursor.execute('''
-                            UPDATE transactions
-                            SET auto_transferred = 1
-                            WHERE transaction_id = ?
-                        ''', (transaction_id,))
-                        
-                        # Update escrow wallet balance
-                        cursor.execute('''
-                            UPDATE wallets 
-                            SET balance = balance + ?
-                            WHERE wallet_id = ?
-                        ''', (amount_sent, intermediary_wallet_id))
-                        
-                        conn.commit()
+                        # Update database with write lock
+                        try:
+                            with DatabaseConnection(DB_PATH) as write_conn:
+                                write_cursor = write_conn.cursor()
+                                
+                                # Update buyer's wallet balance in database
+                                write_cursor.execute('''
+                                    UPDATE wallets 
+                                    SET balance = balance - ?
+                                    WHERE wallet_id = ?
+                                ''', (amount_sent, buyer_wallet_id))
+                                
+                                # Mark transaction as auto-transferred
+                                write_cursor.execute('''
+                                    UPDATE transactions
+                                    SET auto_transferred = 1
+                                    WHERE transaction_id = ?
+                                ''', (transaction_id,))
+                                
+                                # Update escrow wallet balance
+                                write_cursor.execute('''
+                                    UPDATE wallets 
+                                    SET balance = balance + ?
+                                    WHERE wallet_id = ?
+                                ''', (amount_sent, intermediary_wallet_id))
+                        except sqlite3.Error as write_error:
+                            logger.error(f"Database write error in auto-transfer: {write_error}")
+                            continue
                         
                         logger.info(f"Auto-transferred {amount_sent:.8f} BTC from buyer {buyer_id} to intermediary wallet for transaction {transaction_id}. TxID: {txid}")
                         
