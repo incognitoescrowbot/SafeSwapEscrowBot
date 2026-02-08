@@ -3132,8 +3132,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             await query.edit_message_text(
                 f"❌ Insufficient balance!\n\n"
                 f"You need {amount:.8f} {crypto_type} to accept this transaction.\n"
-                f"Your current balance: {buyer_balance:.8f} {crypto_type}\n"
-                f"Shortfall: {(amount - buyer_balance):.8f} {crypto_type}\n\n"
+                f"Your current balance: {buyer_balance:.8f} {crypto_type}\n\n"
                 f"Please deposit more funds to your wallet and try again.",
                 reply_markup=reply_markup
             )
@@ -3634,7 +3633,7 @@ async def check_command(update: Update, context: CallbackContext) -> None:
                     f"✅ **Sufficient BTC Deposit**\n\n"
                     f"Escrow wallet balance:\n"
                     f"*{balance_btc:.8f} BTC*\n\n"
-                    f"Please provide the goods & services to the buyer as agreed.",
+                    f"Please deliver goods & services to the buyer as agreed upon.",
                     parse_mode=ParseMode.MARKDOWN
                 )
         else:
@@ -3755,10 +3754,16 @@ async def select_withdraw_wallet(update: Update, context: CallbackContext) -> in
             
             context.user_data['withdraw_wallet_balance'] = balance
             
+            displayable_balance = max(0, balance - 0.00000250)
+            
+            keyboard = [[InlineKeyboardButton("Withdraw Max Amount", callback_data='withdraw_max')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
             await query.edit_message_text(
-                f"Your current balance: {balance:.8f} BTC\n\n"
+                f"Your current balance: {displayable_balance:.8f} BTC\n\n"
                 f"How much BTC would you like to withdraw?\n"
-                f"(Enter amount in BTC)"
+                f"(Enter amount in BTC)",
+                reply_markup=reply_markup
             )
         else:
             await query.edit_message_text("Wallet not found.")
@@ -3803,6 +3808,7 @@ async def enter_withdraw_amount(update: Update, context: CallbackContext) -> int
             return ENTERING_WITHDRAW_AMOUNT
         
         context.user_data['withdraw_amount'] = amount
+        context.user_data['withdraw_max'] = False
         
         await update.message.reply_text(
             f"Amount to withdraw: {amount:.8f} BTC\n\n"
@@ -3818,6 +3824,20 @@ async def enter_withdraw_amount(update: Update, context: CallbackContext) -> int
         return ENTERING_WITHDRAW_AMOUNT
 
 
+async def withdraw_max_amount(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    await query.answer()
+    
+    context.user_data['withdraw_max'] = True
+    
+    await query.edit_message_text(
+        "You selected to withdraw the maximum amount.\n\n"
+        "Please enter the BTC wallet address where you want to receive the funds:"
+    )
+    
+    return ENTERING_WALLET_ADDRESS
+
+
 async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
     address = update.message.text.strip()
     
@@ -3830,7 +3850,7 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
     context.user_data['withdraw_address'] = address
     
     wallet_id = context.user_data['withdraw_wallet_id']
-    amount = context.user_data['withdraw_amount']
+    is_max_withdrawal = context.user_data.get('withdraw_max', False)
     
     conn = None
     try:
@@ -3846,10 +3866,18 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
         
         from_address, private_key = wallet
         
-        result = btcwalletclient_wif.send_max_btc_auto(
-            wif_private_key=private_key,
-            destination_address=address
-        )
+        if is_max_withdrawal:
+            result = btcwalletclient_wif.send_max_btc_auto(
+                wif_private_key=private_key,
+                destination_address=address
+            )
+        else:
+            amount = context.user_data['withdraw_amount']
+            result = btcwalletclient_wif.send_specific_btc_amount(
+                wif_private_key=private_key,
+                destination_address=address,
+                amount_btc=amount
+            )
         
         if result['success']:
             amount_sent = result['amount_sent']
@@ -3857,7 +3885,7 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
             
             cursor.execute(
                 'UPDATE wallets SET balance = balance - ? WHERE wallet_id = ?',
-                (amount_sent, wallet_id)
+                (amount_sent + fee_paid, wallet_id)
             )
             conn.commit()
             
@@ -4234,11 +4262,11 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
                     transaction_fee = result.get('transaction_fee', 0)
                     
                     await query.edit_message_text(
-                        f"✅ Funds released for transaction {transaction_id}\n"
+                        f"✅ Funds released for transaction {transaction_id}\n\n"
                         f"Transaction ID: {txid}\n\n"
                         f"Seller receives (95%): {seller_amount:.8f} BTC\n"
-                        f"Platform fee (5%): {fee_wallet_amount:.8f} BTC\n"
-                        f"Network fee: {transaction_fee:.8f} BTC (250 satoshis)"
+                        f"Escrow fee (5%): {fee_wallet_amount:.8f} BTC\n"
+                        f"Network fee: {transaction_fee:.8f} BTC"
                     )
                 else:
                     error_msg = result.get('error', 'Unknown error')
@@ -6056,7 +6084,10 @@ def main() -> None:
         entry_points=[CommandHandler('withdraw', withdraw_command)],
         states={
             SELECTING_WITHDRAW_WALLET: [CallbackQueryHandler(select_withdraw_wallet, pattern='^withdraw_')],
-            ENTERING_WITHDRAW_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_withdraw_amount)],
+            ENTERING_WITHDRAW_AMOUNT: [
+                CallbackQueryHandler(withdraw_max_amount, pattern='^withdraw_max$'),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, enter_withdraw_amount)
+            ],
             ENTERING_WALLET_ADDRESS: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_wallet_address)]
         },
         fallbacks=[CommandHandler('cancel', cancel)],
