@@ -117,17 +117,40 @@ def bech32_create_checksum(hrp, data):
     return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
 
 def get_utxos(address):
-    try:
-        url = f"https://blockstream.info/api/address/{address}/utxo"
-        response = requests.get(url)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(f"Failed to fetch UTXOs: {response.status_code}")
-            return []
-    except Exception as e:
-        print(f"Error fetching UTXOs: {e}")
-        return []
+    apis = [
+        {
+            'name': 'Blockstream',
+            'url': f"https://blockstream.info/api/address/{address}/utxo",
+            'parser': lambda r: r.json()
+        },
+        {
+            'name': 'Mempool.space',
+            'url': f"https://mempool.space/api/address/{address}/utxo",
+            'parser': lambda r: r.json()
+        },
+        {
+            'name': 'Blockchain.info',
+            'url': f"https://blockchain.info/unspent?active={address}",
+            'parser': lambda r: [{'txid': utxo['tx_hash_big_endian'], 'vout': utxo['tx_output_n'], 'value': utxo['value']} for utxo in r.json().get('unspent_outputs', [])]
+        }
+    ]
+    
+    for api in apis:
+        try:
+            print(f"Attempting to fetch UTXOs from {api['name']} for address {address}")
+            response = requests.get(api['url'], timeout=15)
+            if response.status_code == 200:
+                utxos = api['parser'](response)
+                print(f"Successfully fetched {len(utxos)} UTXOs from {api['name']}")
+                return utxos
+            else:
+                print(f"{api['name']} API error: {response.status_code}")
+        except Exception as e:
+            print(f"Error fetching UTXOs from {api['name']}: {e}")
+            continue
+    
+    print(f"All blockchain APIs failed for address {address}")
+    return []
 
 def get_balance(address):
     utxos = get_utxos(address)
