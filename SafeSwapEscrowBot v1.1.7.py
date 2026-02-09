@@ -548,6 +548,7 @@ def get_stat(stat_key):
 
 def sanitize_stat_integers():
     """Ensure all stat values in database are stored as integers."""
+    import math
     conn = None
     try:
         conn = sqlite3.connect(DB_PATH, timeout=20.0)
@@ -560,6 +561,8 @@ def sanitize_stat_integers():
             if stat_value is not None:
                 int_value = int(round(stat_value))
                 if stat_value != int_value:
+                    if stat_key in ('deals_completed', 'disputes_resolved') and int_value < stat_value:
+                        int_value = int(math.ceil(stat_value))
                     cursor.execute('''
                         UPDATE stats 
                         SET stat_value = ? 
@@ -596,15 +599,16 @@ def enforce_disputes_constraint():
         min_disputes = int(math.ceil(deals_completed * 0.20))
         max_disputes = int(math.floor(deals_completed * 0.25))
         
-        if disputes_resolved < min_disputes or disputes_resolved > max_disputes:
+        if disputes_resolved < min_disputes:
             target_disputes = int(deals_completed * 0.22)
-            cursor.execute('''
-                UPDATE stats 
-                SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
-                WHERE stat_key = ?
-            ''', (int(target_disputes), 'disputes_resolved'))
-            conn.commit()
-            logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {target_disputes} to maintain 20-25% constraint")
+            if target_disputes > disputes_resolved:
+                cursor.execute('''
+                    UPDATE stats 
+                    SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                    WHERE stat_key = ?
+                ''', (int(target_disputes), 'disputes_resolved'))
+                conn.commit()
+                logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {target_disputes} to maintain 20-25% constraint")
     except sqlite3.Error as e:
         print(f"Database error in enforce_disputes_constraint: {e}")
         if conn:
@@ -643,13 +647,14 @@ def enforce_tens_place_constraint():
                     disputes_resolved = candidate
                     break
             
-            cursor.execute('''
-                UPDATE stats 
-                SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
-                WHERE stat_key = ?
-            ''', (int(disputes_resolved), 'disputes_resolved'))
-            conn.commit()
-            logger.info(f"Adjusted disputes_resolved from {original_disputes} to {disputes_resolved} to avoid matching tens place digit {deals_tens}")
+            if disputes_resolved != original_disputes:
+                cursor.execute('''
+                    UPDATE stats 
+                    SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                    WHERE stat_key = ?
+                ''', (int(disputes_resolved), 'disputes_resolved'))
+                conn.commit()
+                logger.info(f"Adjusted disputes_resolved from {original_disputes} to {disputes_resolved} to avoid matching tens place digit {deals_tens}")
     except sqlite3.Error as e:
         print(f"Database error in enforce_tens_place_constraint: {e}")
         if conn:
@@ -2485,7 +2490,7 @@ async def enter_recipient(update: Update, context: CallbackContext) -> int:
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        f"Select BTC wallet you want to use for this transaction:",
+        f"Select which cryptocurrency you want to use for this transaction:",
         reply_markup=reply_markup
     )
 
