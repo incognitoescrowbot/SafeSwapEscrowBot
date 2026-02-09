@@ -1479,46 +1479,6 @@ def check_duplicate_description(user_id, description):
         if conn:
             conn.close()
 
-
-def get_completed_transaction_descriptions(user_id, limit=5):
-    """
-    Get unique descriptions from completed transactions for a user.
-    
-    Args:
-        user_id: The user's ID (either buyer_id or seller_id)
-        limit: Maximum number of descriptions to return (default 5)
-    
-    Returns:
-        list: List of unique descriptions from completed transactions, most recent first
-    """
-    conn = None
-    try:
-        conn = sqlite3.connect(DB_PATH, timeout=20.0)
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            '''SELECT DISTINCT description 
-               FROM transactions 
-               WHERE (buyer_id = ? OR seller_id = ?) 
-               AND status = 'COMPLETED'
-               AND description IS NOT NULL
-               AND description != ''
-               ORDER BY creation_date DESC
-               LIMIT ?''',
-            (user_id, user_id, limit)
-        )
-        
-        descriptions = [row[0] for row in cursor.fetchall()]
-        return descriptions
-        
-    except sqlite3.Error as e:
-        logger.error(f"Database error getting completed transaction descriptions: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
-
-
 def auto_refresh_user_balances(user_id):
     """
     Automatically refresh all wallet balances for a user.
@@ -2484,9 +2444,6 @@ async def enter_amount(update: Update, context: CallbackContext) -> int:
         crypto_total = crypto_amount + crypto_fee
 
         # Get previous completed transaction descriptions
-        user = update.effective_user
-        previous_descriptions = get_completed_transaction_descriptions(user.id, limit=5)
-        
         message_text = (
             f"Transaction amount: ${usd_amount:.2f} USD\n"
             f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
@@ -2494,22 +2451,7 @@ async def enter_amount(update: Update, context: CallbackContext) -> int:
             "Please enter a description for this transaction (e.g., 'Escrow payment'):"
         )
         
-        if previous_descriptions:
-            keyboard = []
-            for desc in previous_descriptions:
-                # Truncate long descriptions for button display
-                button_text = desc[:50] + "..." if len(desc) > 50 else desc
-                keyboard.append([InlineKeyboardButton(button_text, callback_data=f'prev_desc_{previous_descriptions.index(desc)}')])
-            
-            # Store descriptions in context for callback handler
-            context.user_data['prev_descriptions'] = previous_descriptions
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            message_text += "\n\nOr select from your previous descriptions:"
-            
-            await update.message.reply_text(message_text, reply_markup=reply_markup)
-        else:
-            await update.message.reply_text(message_text)
+        await update.message.reply_text(message_text)
 
         return CONFIRMING_TRANSACTION
     except ValueError:
@@ -2548,64 +2490,6 @@ async def enter_recipient(update: Update, context: CallbackContext) -> int:
     )
 
     return SELECTING_CRYPTO
-
-
-async def select_previous_description(update: Update, context: CallbackContext) -> int:
-    """Handle selection of a previous transaction description."""
-    query = update.callback_query
-    await query.answer()
-    
-    # Extract the index from callback_data
-    index = int(query.data.split('_')[-1])
-    
-    # Get the selected description from stored list
-    previous_descriptions = context.user_data.get('prev_descriptions', [])
-    if index < len(previous_descriptions):
-        description = previous_descriptions[index]
-        context.user_data['description'] = description
-        
-        # Show transaction summary
-        crypto_type = context.user_data['crypto_type']
-        amount = context.user_data['amount']
-        usd_amount = context.user_data['usd_amount']
-        recipient = context.user_data['recipient']
-        
-        # Calculate fees
-        fee = amount * 0.05
-        usd_fee = usd_amount * 0.05
-        
-        # Calculate totals
-        total = amount + fee
-        usd_total = usd_amount + usd_fee
-        
-        keyboard = [
-            [
-                InlineKeyboardButton("Confirm", callback_data='confirm_transaction'),
-                InlineKeyboardButton("Cancel", callback_data='cancel_transaction')
-            ]
-        ]
-        
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await safe_send_text(
-            query.edit_message_text,
-            f"📝 *Transaction Summary*\n\n"
-            f"Cryptocurrency: {crypto_type}\n"
-            f"Amount: ${usd_amount:.2f} USD\n"
-            f"Escrow fee (5%): ${usd_fee:.2f} USD\n"
-            f"Total: ${usd_total:.2f} USD\n"
-            f"Seller: {recipient}\n"
-            f"Description: {description}\n\n"
-            f"Please confirm this transaction:",
-            reply_markup=reply_markup,
-            parse_mode=ParseMode.MARKDOWN
-        )
-        
-        return CONFIRMING_TRANSACTION
-    else:
-        await query.edit_message_text("❌ Invalid selection. Please try again.")
-        return ConversationHandler.END
-
-
 async def confirm_transaction(update: Update, context: CallbackContext) -> int:
     description = update.message.text.strip()
     
@@ -6192,7 +6076,6 @@ def main() -> None:
             ENTERING_AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_amount)],
             ENTERING_RECIPIENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_recipient)],
             CONFIRMING_TRANSACTION: [
-                CallbackQueryHandler(select_previous_description, pattern='^prev_desc_'),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_transaction)
             ]
         },
