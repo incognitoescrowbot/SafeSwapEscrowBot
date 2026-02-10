@@ -5232,6 +5232,22 @@ async def initialize_telethon_client():
         return False
 
 
+async def shutdown_telethon_client(application):
+    """
+    Properly disconnect the Telethon client during application shutdown.
+    This prevents pending task errors when the event loop is closed.
+    """
+    global telethon_client
+    
+    if telethon_client and telethon_client.is_connected():
+        try:
+            logger.info("Disconnecting Telethon client...")
+            await telethon_client.disconnect()
+            logger.info("Telethon client disconnected successfully")
+        except Exception as e:
+            logger.error(f"Error disconnecting Telethon client: {e}")
+
+
 async def create_supergroup_with_users(group_name, usernames_to_add, bot_username):
     """
     Create a supergroup and add specified users to it.
@@ -6167,6 +6183,9 @@ def main() -> None:
 
     # Add error handler
     application.add_error_handler(error_handler)
+
+    # Register shutdown handler for Telethon client cleanup
+    application.post_shutdown = shutdown_telethon_client
 
     # Start background jobs for stats updates and wallet monitoring
     job_queue = application.job_queue
