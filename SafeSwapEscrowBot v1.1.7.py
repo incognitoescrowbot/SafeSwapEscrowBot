@@ -3096,11 +3096,6 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 keyboard.append([
                     InlineKeyboardButton("❌ Cancel", callback_data=f'cancel_transaction_{transaction_id}')
                 ])
-            elif seller_id == user.id or buyer_id == user.id:
-                keyboard.append([
-                    InlineKeyboardButton("✅ Accept", callback_data=f'accept_transaction_{transaction_id}'),
-                    InlineKeyboardButton("❌ Decline", callback_data=f'decline_transaction_{transaction_id}')
-                ])
         
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
         
