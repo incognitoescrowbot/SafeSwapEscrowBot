@@ -1841,9 +1841,9 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "*Step 1:* Go to 'My Account'\n\n"
         "*Step 2:* Create a new wallet for escrow\n\n"
         "*Step 3:* Deposit funds to the wallet address\n\n"
-        "*Step 4:* Initiate a transaction with 'Start Trade'\n\n"
+        "*Step 4:* Initiate transaction with 'Start Trade'\n\n"
         "*Step 5:* Create group for escrow transaction\n\n"
-        "*Step 6:* Deposit BTC to escrow in the wallet\n\n"
+        "*Step 6:* Deposit BTC to the escrow wallet\n\n"
         "*Step 7:* Seller will provide good & services\n\n"
         "*Step 8:* Once buyer has received goods & services as described, they will release funds from escrow\n\n"
         
@@ -4350,7 +4350,7 @@ async def dispute_command(update: Update, context: CallbackContext) -> int:
         cursor = conn.cursor()
 
         cursor.execute(
-            '''SELECT transaction_id, seller_id, buyer_id, crypto_type, amount, status, creation_date
+            '''SELECT transaction_id, seller_id, buyer_id, crypto_type, amount, status, creation_date, description
                FROM transactions
                WHERE (seller_id = ? OR buyer_id = ?) AND status = 'PENDING'
                ORDER BY creation_date DESC''',
@@ -4372,12 +4372,11 @@ async def dispute_command(update: Update, context: CallbackContext) -> int:
     keyboard = []
     for transaction in results:
         transaction_id = transaction[0]
-        crypto_type = transaction[3]
-        amount = transaction[4]
-        creation_date = transaction[6]
+        description = transaction[7]
         
+        button_text = description if description else "No description"
         keyboard.append([InlineKeyboardButton(
-            f"{transaction_id[:8]}... - {amount:.6f} {crypto_type}",
+            button_text,
             callback_data=f'select_dispute_{transaction_id}'
         )])
 
@@ -5192,17 +5191,51 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
             )
         )
     elif text == "Back to Main Menu 🔙":
-        # Return to main menu
+        # Return to main menu with welcome message and video
+        user = update.effective_user
+        deals_completed = get_stat('deals_completed')
+        disputes_resolved = get_stat('disputes_resolved')
+        
+        if deals_completed % 10 == 0 and disputes_resolved % 10 == 0:
+            disputes_resolved += 1
+        
+        welcome_message = (
+            f"Welcome to SafeSwap Escrow Bot,              {user.first_name}{f' {user.last_name}' if user.last_name else ''}!\n\n"
+            "We are your trusted escrow service for secure transactions. "
+            "Keep your funds safe and pay other users with confidence.\n\n"
+            f"📊 *Deals Completed:* {deals_completed:,}\n"
+            f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
+            "_Tap 'Help Desk' button for further guidance_\n\n"
+        )
+        
         keyboard = [
             [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
             [KeyboardButton("Language"), KeyboardButton("Help Desk")],
             [KeyboardButton("Withdraw Funds")]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_text(
-            "Main Menu:",
-            reply_markup=reply_markup
-        )
+        
+        if WELCOME_VIDEO_URL:
+            try:
+                await update.message.reply_video(
+                    video=WELCOME_VIDEO_URL,
+                    caption=welcome_message,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
+            except BadRequest as e:
+                logger.warning(f"Failed to send video: {e}. Falling back to text message.")
+                await update.message.reply_text(
+                    welcome_message,
+                    parse_mode=ParseMode.MARKDOWN,
+                    reply_markup=reply_markup
+                )
+        else:
+            await update.message.reply_text(
+                welcome_message,
+                parse_mode=ParseMode.MARKDOWN,
+                reply_markup=reply_markup
+            )
 
 
 async def initialize_telethon_client():
