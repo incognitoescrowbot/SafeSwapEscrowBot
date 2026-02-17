@@ -34,7 +34,7 @@ import string
 import crypto_utils
 from crypto_utils import KeyManager, WalletManager, TransactionManager, ElectrumXClient
 from crypto_utils import ADDRESS_TYPE_LEGACY, ADDRESS_TYPE_SEGWIT, ADDRESS_TYPE_NATIVE_SEGWIT
-from crypto_price import get_crypto_price, convert_crypto_to_fiat, convert_fiat_to_crypto, init_crypto_prices_table
+from crypto_price import get_crypto_price, convert_crypto_to_fiat, convert_fiat_to_crypto, init_crypto_prices_table, get_multiple_crypto_prices
 import btcwalletclient_wif
 # Import Telethon for group creation
 import asyncio
@@ -416,6 +416,11 @@ def migrate_wallets_table():
             cursor.execute('ALTER TABLE wallets ADD COLUMN pending_balance REAL DEFAULT 0.0')
             conn.commit()
             print("Added pending_balance column to wallets table")
+
+        if 'last_balance_update' not in columns:
+            cursor.execute('ALTER TABLE wallets ADD COLUMN last_balance_update TIMESTAMP')
+            conn.commit()
+            print("Added last_balance_update column to wallets table")
     except sqlite3.Error as e:
         print(f"Database migration error: {e}")
         if conn:
@@ -1108,6 +1113,49 @@ def get_btc_balance_from_blockchain(address):
     return None
 
 
+def get_cached_wallet_balance(address):
+    """
+    Get cached BTC balance from database instead of making API calls.
+    This function should be used by all user-facing operations to avoid blocking.
+    The balance is updated by background jobs.
+
+    Args:
+        address (str): Bitcoin wallet address
+
+    Returns:
+        dict: {'balance': float, 'last_update': datetime} or None if not found
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT balance, last_balance_update
+            FROM wallets
+            WHERE address = ? AND crypto_type = 'BTC'
+        ''', (address,))
+
+        result = cursor.fetchone()
+
+        if result:
+            balance, last_update = result
+            return {
+                'balance': balance if balance is not None else 0.0,
+                'last_update': last_update
+            }
+
+        logger.warning(f"No cached balance found for address {address}")
+        return None
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error in get_cached_wallet_balance: {e}")
+        return None
+    finally:
+        if conn:
+            conn.close()
+
+
 def update_wallet_balance(wallet_id, new_balance):
     """
     Update the stored balance in the database for a wallet
@@ -1123,7 +1171,7 @@ def update_wallet_balance(wallet_id, new_balance):
         with DatabaseConnection(DB_PATH) as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'UPDATE wallets SET balance = ? WHERE wallet_id = ?',
+                'UPDATE wallets SET balance = ?, last_balance_update = CURRENT_TIMESTAMP WHERE wallet_id = ?',
                 (new_balance, wallet_id)
             )
         return True
@@ -1887,11 +1935,9 @@ async def wallet_command(update: Update, context: CallbackContext) -> None:
             usd_balance = convert_crypto_to_fiat(balance, crypto_type)
             usd_value_text = f"(${usd_balance:.2f} USD)" if usd_balance is not None else "(USD value unavailable)"
 
-            # Get blockchain balance for BTC
-            blockchain_balance = None
-            if crypto_type == 'BTC':
-                blockchain_balance = get_btc_balance_from_blockchain(address)
-            
+            # Balance is updated by background jobs, no need to fetch from blockchain here
+            # This prevents blocking API calls during user interactions
+
             # Get pending transaction balance
             pending_tx_balance = get_user_pending_transaction_balance(user.id, crypto_type)
             pending_usd_balance = convert_crypto_to_fiat(pending_tx_balance, crypto_type)
@@ -3629,24 +3675,26 @@ async def check_command(update: Update, context: CallbackContext) -> None:
             return
         
         intermediary_address = intermediary_result[0]
-        
-        # Check escrow wallet balance from blockchain
-        balance_btc = get_btc_balance_from_blockchain(intermediary_address)
-        
-        if balance_btc is None:
+
+        # Get cached escrow wallet balance (updated by background jobs)
+        cached_balance = get_cached_wallet_balance(intermediary_address)
+
+        if cached_balance is None:
             await update.message.reply_text(
-                "❌ Error: Could not fetch escrow wallet balance from blockchain. Please try again later.",
+                "❌ Error: Could not fetch escrow wallet balance. Please try again later.",
                 parse_mode=ParseMode.MARKDOWN
             )
             return
-        
+
+        balance_btc = cached_balance['balance']
+
         # Calculate 99% threshold (including fee)
         total_amount = transaction_amount + fee_amount
         threshold_99 = total_amount * 0.99
-        
+
         # Check if user is buyer or seller
         is_buyer = (user.id == buyer_id)
-        
+
         # Check if balance meets 99% threshold
         if balance_btc >= threshold_99:
             # Sufficient balance
@@ -4235,13 +4283,15 @@ async def release_callback(update: Update, context: CallbackContext) -> None:
                 
                 if intermediary_result:
                     intermediary_address = intermediary_result[0]
-                    
+
                     try:
-                        balance_btc = get_btc_balance_from_blockchain(intermediary_address)
-                        
-                        if balance_btc is not None:
+                        # Get cached balance (updated by background jobs)
+                        cached_balance = get_cached_wallet_balance(intermediary_address)
+
+                        if cached_balance is not None:
+                            balance_btc = cached_balance['balance']
                             threshold_99 = amount * 0.99
-                            
+
                             if balance_btc < threshold_99:
                                 shortfall = threshold_99 - balance_btc
                                 await query.edit_message_text(
@@ -5846,8 +5896,9 @@ async def monitor_all_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                         
                         # Update actual wallet balance in wallets table
                         cursor.execute('''
-                            UPDATE wallets 
-                            SET balance = ? 
+                            UPDATE wallets
+                            SET balance = ?,
+                                last_balance_update = CURRENT_TIMESTAMP
                             WHERE wallet_id = ?
                         ''', (blockchain_balance, wallet_id))
                         
@@ -5856,12 +5907,19 @@ async def monitor_all_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                         logger.info(f"Balance updated for wallet {wallet_id}: {db_balance:.8f} → {blockchain_balance:.8f} BTC (change: {balance_change:+.8f})")
                     
                     else:
-                        # Just update the last_checked timestamp
+                        # Balance hasn't changed, but update last_checked and last_balance_update timestamps
                         cursor.execute('''
-                            UPDATE wallet_monitoring 
+                            UPDATE wallet_monitoring
                             SET last_checked = CURRENT_TIMESTAMP
                             WHERE wallet_id = ?
                         ''', (wallet_id,))
+
+                        cursor.execute('''
+                            UPDATE wallets
+                            SET last_balance_update = CURRENT_TIMESTAMP
+                            WHERE wallet_id = ?
+                        ''', (wallet_id,))
+
                         conn.commit()
                 
                 except Exception as wallet_error:
@@ -6041,20 +6099,23 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
                 return
             
             intermediary_address = intermediary_result[0]
-            
-            balance_btc = get_btc_balance_from_blockchain(intermediary_address)
-            
-            if balance_btc is None:
+
+            # Get cached balance (updated by background jobs)
+            cached_balance = get_cached_wallet_balance(intermediary_address)
+
+            if cached_balance is None:
                 await context.bot.send_message(
                     chat_id=group_id,
-                    text="❌ Error: Could not fetch escrow wallet balance from blockchain.",
+                    text="❌ Error: Could not fetch escrow wallet balance.",
                     parse_mode='Markdown'
                 )
                 return
-            
+
+            balance_btc = cached_balance['balance']
+
             total_amount = transaction_amount + fee_amount
             threshold_99 = total_amount * 0.99
-            
+
             if balance_btc >= threshold_99:
                 message = (
                     f"✅ **Automatic Check: Sufficient BTC Deposit**\n\n"
@@ -6087,6 +6148,31 @@ async def send_check_command_callback(context: ContextTypes.DEFAULT_TYPE):
                 
     except Exception as e:
         logger.error(f"Error in send_check_command_callback: {e}")
+
+
+async def update_crypto_prices_callback(context: ContextTypes.DEFAULT_TYPE):
+    """
+    Background job to update cryptocurrency prices in the database.
+    Runs every 60 seconds to keep prices fresh.
+    Uses batch API call to reduce rate limit usage.
+    """
+    try:
+        # List of supported cryptocurrencies
+        supported_cryptos = ['BTC', 'ETH', 'LTC', 'XMR', 'DASH', 'BCH', 'ZEC']
+
+        # Use batch function to fetch all prices in one API call (more efficient)
+        prices = get_multiple_crypto_prices(supported_cryptos, force_refresh=True)
+
+        if prices:
+            logger.info(f"Updated prices for {len(prices)} cryptocurrencies: {', '.join([f'{k}=${v}' for k, v in prices.items()])}")
+        else:
+            logger.warning("No cryptocurrency prices were updated")
+
+    except Exception as e:
+        logger.error(f"Error in update_crypto_prices_callback: {e}")
+    finally:
+        # Schedule next update in 60 seconds
+        context.job_queue.run_once(update_crypto_prices_callback, 60)
 
 
 def main() -> None:
@@ -6230,7 +6316,8 @@ def main() -> None:
         job_queue.run_once(monitor_buyer_wallets_callback, 10)  # Start buyer wallet monitoring after 10 seconds
         job_queue.run_once(monitor_intermediary_wallets_callback, 15)  # Start intermediary wallet monitoring after 15 seconds
         job_queue.run_once(monitor_all_wallets_callback, 20)  # Start comprehensive wallet monitoring after 20 seconds
-        logger.info(f"Started background jobs for stats updates (deals: {initial_deals_interval}s, disputes: {initial_disputes_interval}s), buyer wallet monitoring, intermediary wallet monitoring, and comprehensive wallet monitoring")
+        job_queue.run_once(update_crypto_prices_callback, 5)  # Start crypto price updates after 5 seconds
+        logger.info(f"Started background jobs for stats updates (deals: {initial_deals_interval}s, disputes: {initial_disputes_interval}s), buyer wallet monitoring, intermediary wallet monitoring, comprehensive wallet monitoring, and crypto price updates")
     else:
         logger.warning("JobQueue not available. Install with: pip install 'python-telegram-bot[job-queue]'")
 
