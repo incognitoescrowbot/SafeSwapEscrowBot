@@ -375,42 +375,78 @@ def get_multiple_crypto_prices(crypto_types, force_refresh=False):
     return results
 
 
-def convert_crypto_to_fiat(crypto_amount, crypto_type):
+def get_cached_crypto_price(crypto_type):
+    """
+    Get cached cryptocurrency price from database WITHOUT making API calls.
+    This function is for user-facing operations that need instant response.
+    Background jobs update the cache, user operations read from cache.
+
+    Args:
+        crypto_type (str): The cryptocurrency symbol (e.g., 'BTC', 'ETH')
+
+    Returns:
+        float: The cached price in USD, or None if not in cache
+    """
+    crypto_type = crypto_type.upper()
+
+    if crypto_type not in CRYPTO_ID_MAP:
+        logger.error(f"Unsupported cryptocurrency: {crypto_type}")
+        return None
+
+    # Only read from cache, never make API calls
+    cached_price = get_price_from_db(crypto_type)
+    if cached_price is not None:
+        logger.debug(f"Using cached {crypto_type} price: ${cached_price}")
+        return cached_price
+
+    logger.warning(f"No cached price found for {crypto_type}")
+    return None
+
+
+def convert_crypto_to_fiat(crypto_amount, crypto_type, use_cache_only=False):
     """
     Convert a cryptocurrency amount to USD.
-    
+
     Args:
         crypto_amount (float): The amount of cryptocurrency
         crypto_type (str): The cryptocurrency symbol (e.g., 'BTC', 'ETH')
-        
+        use_cache_only (bool): If True, only use cached price (no API calls)
+
     Returns:
         float: The equivalent amount in USD
     """
-    price = get_crypto_price(crypto_type)
-    
+    if use_cache_only:
+        price = get_cached_crypto_price(crypto_type)
+    else:
+        price = get_crypto_price(crypto_type)
+
     if price is None:
         return None
-    
+
     usd_amount = float(crypto_amount) * price
-    logger.info(f"{crypto_amount} {crypto_type} = ${usd_amount:.2f}")
+    logger.debug(f"{crypto_amount} {crypto_type} = ${usd_amount:.2f}")
     return usd_amount
 
-def convert_fiat_to_crypto(usd_amount, crypto_type):
+def convert_fiat_to_crypto(usd_amount, crypto_type, use_cache_only=False):
     """
     Convert a USD amount to cryptocurrency.
-    
+
     Args:
         usd_amount (float): The amount in USD
         crypto_type (str): The cryptocurrency symbol (e.g., 'BTC', 'ETH')
-        
+        use_cache_only (bool): If True, only use cached price (no API calls)
+
     Returns:
         float: The equivalent amount in the specified cryptocurrency
     """
-    price = get_crypto_price(crypto_type)
-    
+    if use_cache_only:
+        price = get_cached_crypto_price(crypto_type)
+    else:
+        price = get_crypto_price(crypto_type)
+
     if price is None or price == 0:
         return None
-    
+
     crypto_amount = float(usd_amount) / price
-    logger.info(f"${usd_amount} = {crypto_amount} {crypto_type}")
+    logger.debug(f"${usd_amount} = {crypto_amount} {crypto_type}")
     return crypto_amount

@@ -1846,14 +1846,15 @@ async def start(update: Update, context: CallbackContext) -> None:
             if conn:
                 conn.close()
         
-        usd_amount = convert_crypto_to_fiat(amount, crypto_type)
+        # Use cached prices for instant response (no API calls)
+        usd_amount = convert_crypto_to_fiat(amount, crypto_type, use_cache_only=True)
         usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
-        
-        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
+
+        usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type, use_cache_only=True) if fee_amount else None
         usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
-        
+
         total_crypto = amount + fee_amount if fee_amount else amount
-        usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
+        usd_total = convert_crypto_to_fiat(total_crypto, crypto_type, use_cache_only=True)
         usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
         
         remaining_count = len(pending_transactions) - 1
@@ -1989,7 +1990,7 @@ async def wallet_command(update: Update, context: CallbackContext) -> None:
             address_type = wallet[6] if len(wallet) > 6 else "segwit"
 
             # Get USD value of the balance
-            usd_balance = convert_crypto_to_fiat(balance, crypto_type)
+            usd_balance = convert_crypto_to_fiat(balance, crypto_type, use_cache_only=True)
             usd_value_text = f"(${usd_balance:.2f} USD)" if usd_balance is not None else "(USD value unavailable)"
 
             # Balance is updated by background jobs, no need to fetch from blockchain here
@@ -1997,7 +1998,7 @@ async def wallet_command(update: Update, context: CallbackContext) -> None:
 
             # Get pending transaction balance
             pending_tx_balance = get_user_pending_transaction_balance(user.id, crypto_type)
-            pending_usd_balance = convert_crypto_to_fiat(pending_tx_balance, crypto_type)
+            pending_usd_balance = convert_crypto_to_fiat(pending_tx_balance, crypto_type, use_cache_only=True)
             pending_usd_value_text = f"(${pending_usd_balance:.2f} USD)" if pending_usd_balance is not None else "(USD value unavailable)"
 
             # Escape the address for Markdown
@@ -2383,11 +2384,11 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
             else:
                 sync_status = ""
 
-            usd_balance = convert_crypto_to_fiat(balance, crypto_type)
+            usd_balance = convert_crypto_to_fiat(balance, crypto_type, use_cache_only=True)
             usd_value_text = f"(${usd_balance:.2f} USD)" if usd_balance is not None else "(USD value unavailable)"
 
             pending_tx_balance = get_user_pending_transaction_balance(user.id, crypto_type)
-            pending_usd_balance = convert_crypto_to_fiat(pending_tx_balance, crypto_type)
+            pending_usd_balance = convert_crypto_to_fiat(pending_tx_balance, crypto_type, use_cache_only=True)
             pending_usd_value_text = f"(${pending_usd_balance:.2f} USD)" if pending_usd_balance is not None else "(USD value unavailable)"
 
             escaped_address = escape_markdown(address)
@@ -2532,8 +2533,8 @@ async def enter_amount(update: Update, context: CallbackContext) -> int:
 
         crypto_type = context.user_data['crypto_type']
 
-        # Convert USD amount to cryptocurrency amount
-        crypto_amount = convert_fiat_to_crypto(usd_amount, crypto_type)
+        # Convert USD amount to cryptocurrency amount (using cached price)
+        crypto_amount = convert_fiat_to_crypto(usd_amount, crypto_type, use_cache_only=True)
 
         if crypto_amount is None:
             await update.message.reply_text(
@@ -2583,7 +2584,7 @@ async def enter_recipient(update: Update, context: CallbackContext) -> int:
     keyboard = []
     for wallet in wallets:
         wallet_id, crypto_type, address, balance = wallet[0], wallet[1], wallet[2], wallet[3]
-        usd_balance = convert_crypto_to_fiat(balance, crypto_type)
+        usd_balance = convert_crypto_to_fiat(balance, crypto_type, use_cache_only=True)
         usd_value_text = f"${usd_balance:.2f} USD" if usd_balance is not None else "USD value unavailable"
 
         keyboard.append(
@@ -3162,14 +3163,14 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             usd_amount = stored_usd_amount
             usd_value_text = f"${usd_amount:.2f} USD"
         else:
-            usd_amount = convert_crypto_to_fiat(amount, crypto_type)
+            usd_amount = convert_crypto_to_fiat(amount, crypto_type, use_cache_only=True)
             usd_value_text = f"${usd_amount:.2f} USD" if usd_amount is not None else "USD value unavailable"
         
         if stored_usd_fee is not None:
             usd_fee = stored_usd_fee
             usd_fee_text = f"${usd_fee:.2f} USD"
         else:
-            usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type) if fee_amount else None
+            usd_fee = convert_crypto_to_fiat(fee_amount, crypto_type, use_cache_only=True) if fee_amount else None
             usd_fee_text = f"${usd_fee:.2f} USD" if usd_fee is not None else "USD value unavailable"
         
         total_crypto = amount + fee_amount if fee_amount else amount
@@ -3177,7 +3178,7 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
             usd_total = stored_usd_amount + stored_usd_fee
             usd_total_text = f"${usd_total:.2f} USD"
         else:
-            usd_total = convert_crypto_to_fiat(total_crypto, crypto_type)
+            usd_total = convert_crypto_to_fiat(total_crypto, crypto_type, use_cache_only=True)
             usd_total_text = f"${usd_total:.2f} USD" if usd_total is not None else "USD value unavailable"
         
         details_text = (
@@ -3374,14 +3375,14 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 if conn_next:
                     conn_next.close()
             
-            next_usd_amount = convert_crypto_to_fiat(next_amount, next_crypto_type)
+            next_usd_amount = convert_crypto_to_fiat(next_amount, next_crypto_type, use_cache_only=True)
             next_usd_value_text = f"${next_usd_amount:.2f} USD" if next_usd_amount is not None else "USD value unavailable"
             
-            next_usd_fee = convert_crypto_to_fiat(next_fee_amount, next_crypto_type) if next_fee_amount else None
+            next_usd_fee = convert_crypto_to_fiat(next_fee_amount, next_crypto_type, use_cache_only=True) if next_fee_amount else None
             next_usd_fee_text = f"${next_usd_fee:.2f} USD" if next_usd_fee is not None else "USD value unavailable"
             
             next_total_crypto = next_amount + next_fee_amount if next_fee_amount else next_amount
-            next_usd_total = convert_crypto_to_fiat(next_total_crypto, next_crypto_type)
+            next_usd_total = convert_crypto_to_fiat(next_total_crypto, next_crypto_type, use_cache_only=True)
             next_usd_total_text = f"${next_usd_total:.2f} USD" if next_usd_total is not None else "USD value unavailable"
             
             remaining_count = len(remaining_pending) - 1
@@ -3506,14 +3507,14 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                 if conn_next:
                     conn_next.close()
             
-            next_usd_amount = convert_crypto_to_fiat(next_amount, next_crypto_type)
+            next_usd_amount = convert_crypto_to_fiat(next_amount, next_crypto_type, use_cache_only=True)
             next_usd_value_text = f"${next_usd_amount:.2f} USD" if next_usd_amount is not None else "USD value unavailable"
             
-            next_usd_fee = convert_crypto_to_fiat(next_fee_amount, next_crypto_type) if next_fee_amount else None
+            next_usd_fee = convert_crypto_to_fiat(next_fee_amount, next_crypto_type, use_cache_only=True) if next_fee_amount else None
             next_usd_fee_text = f"${next_usd_fee:.2f} USD" if next_usd_fee is not None else "USD value unavailable"
             
             next_total_crypto = next_amount + next_fee_amount if next_fee_amount else next_amount
-            next_usd_total = convert_crypto_to_fiat(next_total_crypto, next_crypto_type)
+            next_usd_total = convert_crypto_to_fiat(next_total_crypto, next_crypto_type, use_cache_only=True)
             next_usd_total_text = f"${next_usd_total:.2f} USD" if next_usd_total is not None else "USD value unavailable"
             
             remaining_count = len(remaining_pending) - 1
@@ -3845,7 +3846,7 @@ async def withdraw_command(update: Update, context: CallbackContext) -> int:
     keyboard = []
     for wallet in btc_wallets:
         wallet_id, crypto_type, address, balance = wallet[0], wallet[1], wallet[2], wallet[3]
-        usd_balance = convert_crypto_to_fiat(balance, crypto_type)
+        usd_balance = convert_crypto_to_fiat(balance, crypto_type, use_cache_only=True)
         usd_value_text = f"${usd_balance:.2f} USD" if usd_balance is not None else "USD value unavailable"
 
         keyboard.append(
