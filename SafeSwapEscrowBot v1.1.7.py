@@ -1180,6 +1180,62 @@ def update_wallet_balance(wallet_id, new_balance):
         return False
 
 
+def get_cached_balance_by_wallet_id(wallet_id):
+    """
+    Get cached balance from database by wallet_id for user-facing operations.
+    This is a non-blocking alternative to sync_blockchain_balance().
+    Background jobs update the cache, user operations read from cache.
+
+    Args:
+        wallet_id (str): Wallet ID
+
+    Returns:
+        dict: {
+            'success': bool,
+            'db_balance': float,
+            'new_blockchain_balance': float,  # same as db_balance for cached reads
+            'old_balance': float,  # same as db_balance for cached reads
+            'difference': float,  # always 0 for cached reads
+            'last_update': str  # timestamp of last cache update
+        }
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=20.0)
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT balance, last_balance_update, address
+            FROM wallets
+            WHERE wallet_id = ?
+        ''', (wallet_id,))
+
+        result = cursor.fetchone()
+
+        if not result:
+            return {'success': False, 'error': 'Wallet not found'}
+
+        balance, last_update, address = result
+        cached_balance = balance if balance is not None else 0.0
+
+        return {
+            'success': True,
+            'db_balance': cached_balance,
+            'new_blockchain_balance': cached_balance,
+            'old_balance': cached_balance,
+            'difference': 0.0,
+            'last_update': last_update if last_update else 'Never',
+            'reconciled': False  # cached reads don't reconcile
+        }
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error in get_cached_balance_by_wallet_id: {e}")
+        return {'success': False, 'error': f'Database error: {e}'}
+    finally:
+        if conn:
+            conn.close()
+
+
 def sync_blockchain_balance(wallet_id):
     """
     Fetch current balance from blockchain and sync with database.
@@ -1555,21 +1611,22 @@ def auto_refresh_user_balances(user_id):
         
         for wallet in wallets:
             wallet_id, crypto_type = wallet[0], wallet[1]
-            
+
             if crypto_type.upper() == 'BTC':
                 try:
-                    sync_result = sync_blockchain_balance(wallet_id)
+                    # Use cached balance instead of blocking API call
+                    sync_result = get_cached_balance_by_wallet_id(wallet_id)
                     if sync_result['success']:
                         refresh_results['refreshed_count'] += 1
                         refresh_results['btc_wallets_updated'] += 1
-                        logger.info(f"Auto-refreshed BTC wallet {wallet_id} for user {user_id}")
+                        logger.info(f"Retrieved cached balance for BTC wallet {wallet_id} for user {user_id}")
                     else:
                         refresh_results['failed_count'] += 1
-                        refresh_results['errors'].append(f"Failed to sync wallet {wallet_id}: {sync_result.get('error', 'Unknown error')}")
+                        refresh_results['errors'].append(f"Failed to get cached balance for wallet {wallet_id}: {sync_result.get('error', 'Unknown error')}")
                 except Exception as e:
                     refresh_results['failed_count'] += 1
-                    refresh_results['errors'].append(f"Error syncing wallet {wallet_id}: {str(e)}")
-                    logger.error(f"Error auto-refreshing wallet {wallet_id}: {e}")
+                    refresh_results['errors'].append(f"Error getting cached balance for wallet {wallet_id}: {str(e)}")
+                    logger.error(f"Error retrieving cached balance for wallet {wallet_id}: {e}")
             else:
                 refresh_results['refreshed_count'] += 1
         
@@ -2316,7 +2373,8 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
             address_type = wallet[6] if len(wallet) > 6 else "segwit"
 
             if crypto_type.upper() == 'BTC':
-                sync_result = sync_blockchain_balance(wallet_id)
+                # Use cached balance instead of blocking API call
+                sync_result = get_cached_balance_by_wallet_id(wallet_id)
                 if sync_result['success']:
                     balance = sync_result['db_balance']
                     sync_status = ""
@@ -2967,7 +3025,8 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         if crypto_type.upper() == 'BTC':
-            sync_result = sync_blockchain_balance(wallet_id)
+            # Use cached balance instead of blocking API call
+            sync_result = get_cached_balance_by_wallet_id(wallet_id)
 
             balance_info = ""
             if sync_result['success']:
@@ -3822,13 +3881,13 @@ async def select_withdraw_wallet(update: Update, context: CallbackContext) -> in
         if wallet:
             balance = wallet[0]
             
-            # Sync with blockchain to get actual balance
-            sync_result = sync_blockchain_balance(wallet_id)
+            # Use cached balance instead of blocking API call
+            sync_result = get_cached_balance_by_wallet_id(wallet_id)
             if sync_result['success']:
-                balance = sync_result['new_blockchain_balance']
-                print(f"Synced withdraw wallet balance: {balance} BTC for wallet {wallet_id}")
+                balance = sync_result['db_balance']
+                print(f"Retrieved cached withdraw wallet balance: {balance} BTC for wallet {wallet_id}")
             else:
-                print(f"Failed to sync withdraw wallet balance: {sync_result.get('error', 'Unknown error')}")
+                print(f"Failed to get cached withdraw wallet balance: {sync_result.get('error', 'Unknown error')}")
                 # Continue with stored balance as fallback
             
             context.user_data['withdraw_wallet_balance'] = balance
@@ -3868,16 +3927,16 @@ async def enter_withdraw_amount(update: Update, context: CallbackContext) -> int
         
         wallet_balance = context.user_data.get('withdraw_wallet_balance', 0)
         
-        # Sync wallet balance with blockchain before checking
+        # Use cached balance instead of blocking API call
         wallet_id = context.user_data.get('withdraw_wallet_id')
         if wallet_id:
-            sync_result = sync_blockchain_balance(wallet_id)
+            sync_result = get_cached_balance_by_wallet_id(wallet_id)
             if sync_result['success']:
-                wallet_balance = sync_result['new_blockchain_balance']
+                wallet_balance = sync_result['db_balance']
                 context.user_data['withdraw_wallet_balance'] = wallet_balance
-                print(f"Synced withdraw wallet balance: {wallet_balance} BTC for wallet {wallet_id}")
+                print(f"Retrieved cached withdraw wallet balance: {wallet_balance} BTC for wallet {wallet_id}")
             else:
-                print(f"Failed to sync withdraw wallet balance: {sync_result.get('error', 'Unknown error')}")
+                print(f"Failed to get cached withdraw wallet balance: {sync_result.get('error', 'Unknown error')}")
         
         if amount > wallet_balance:
             await update.message.reply_text(
@@ -5819,16 +5878,13 @@ def setup_wallet_monitoring(wallet_id, user_id, address, crypto_type='BTC'):
                 WHERE wallet_id = ?
             ''', (address, user_id, crypto_type, wallet_id))
         else:
-            # Get current balance from blockchain
+            # Initialize with 0 balance - background job will update it
+            # Avoiding blocking API call during wallet setup for instant creation
             current_balance = 0.0
-            if crypto_type.upper() == 'BTC':
-                blockchain_balance = get_btc_balance_from_blockchain(address)
-                if blockchain_balance is not None:
-                    current_balance = blockchain_balance
-            
+
             # Add new monitoring record
             cursor.execute('''
-                INSERT INTO wallet_monitoring 
+                INSERT INTO wallet_monitoring
                 (wallet_id, address, user_id, crypto_type, current_balance, previous_balance, monitoring_enabled)
                 VALUES (?, ?, ?, ?, ?, ?, 1)
             ''', (wallet_id, address, user_id, crypto_type, current_balance, current_balance))
