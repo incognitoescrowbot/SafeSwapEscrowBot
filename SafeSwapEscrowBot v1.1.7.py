@@ -1113,6 +1113,20 @@ def get_btc_balance_from_blockchain(address):
     return None
 
 
+async def async_get_btc_balance_from_blockchain(address):
+    """
+    Non-blocking async wrapper for get_btc_balance_from_blockchain.
+    Runs the synchronous API call in a thread pool so it doesn't block the event loop.
+
+    Args:
+        address (str): Bitcoin wallet address
+
+    Returns:
+        float: Balance in BTC, or None if all requests fail
+    """
+    return await asyncio.to_thread(get_btc_balance_from_blockchain, address)
+
+
 def get_cached_wallet_balance(address):
     """
     Get cached BTC balance from database instead of making API calls.
@@ -1302,6 +1316,20 @@ def sync_blockchain_balance(wallet_id):
     finally:
         if conn:
             conn.close()
+
+
+async def async_sync_blockchain_balance(wallet_id):
+    """
+    Non-blocking async wrapper for sync_blockchain_balance.
+    Runs the synchronous function in a thread pool so it doesn't block the event loop.
+
+    Args:
+        wallet_id (str): Wallet ID
+
+    Returns:
+        dict: Same return as sync_blockchain_balance
+    """
+    return await asyncio.to_thread(sync_blockchain_balance, wallet_id)
 
 
 def subtract_wallet_balance(wallet_id, amount):
@@ -2110,19 +2138,21 @@ async def wallet_callback(update: Update, context: CallbackContext) -> None:
             await query.edit_message_text(status_msg)
             
             try:
-                balance_satoshis = btcwalletclient_wif.get_balance(buyer_address)
+                balance_satoshis = await asyncio.to_thread(btcwalletclient_wif.get_balance, buyer_address)
                 balance_btc = balance_satoshis / 1e8
-                
+
                 transaction_amount_satoshis = int(transaction_amount * 1e8)
                 required_balance_satoshis = transaction_amount_satoshis + 250
-                
+
                 if balance_satoshis < required_balance_satoshis:
-                    transfer_result = btcwalletclient_wif.send_max_btc_auto(
+                    transfer_result = await asyncio.to_thread(
+                        btcwalletclient_wif.send_max_btc_auto,
                         wif_private_key=buyer_private_key,
                         destination_address=intermediary_address
                     )
                 else:
-                    transfer_result = btcwalletclient_wif.send_specific_btc_amount(
+                    transfer_result = await asyncio.to_thread(
+                        btcwalletclient_wif.send_specific_btc_amount,
                         wif_private_key=buyer_private_key,
                         destination_address=intermediary_address,
                         amount_btc=transaction_amount
@@ -2512,8 +2542,8 @@ async def select_crypto(update: Update, context: CallbackContext) -> int:
     crypto_type = query.data.split('_')[1]
     context.user_data['crypto_type'] = crypto_type
 
-    # Get current price of the cryptocurrency in USD
-    price = get_crypto_price(crypto_type)
+    # Get current price of the cryptocurrency in USD (non-blocking)
+    price = await asyncio.to_thread(get_crypto_price, crypto_type)
     price_info = f"Current {crypto_type} price: ${price:.2f} USD" if price is not None else "Price information unavailable"
 
     await query.edit_message_text(
@@ -2769,8 +2799,9 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
                         if pk_result and pk_result[0]:
                             wif_key = pk_result[0]
                             
-                            # Send available balance (minus 250 sats) to intermediary wallet
-                            transfer_result = btcwalletclient_wif.send_max_btc_auto(
+                            # Send available balance (minus 250 sats) to intermediary wallet (non-blocking)
+                            transfer_result = await asyncio.to_thread(
+                                btcwalletclient_wif.send_max_btc_auto,
                                 wif_private_key=wif_key,
                                 destination_address=intermediary_wallet_address
                             )
@@ -4006,13 +4037,15 @@ async def enter_wallet_address(update: Update, context: CallbackContext) -> int:
         from_address, private_key = wallet
         
         if is_max_withdrawal:
-            result = btcwalletclient_wif.send_max_btc_auto(
+            result = await asyncio.to_thread(
+                btcwalletclient_wif.send_max_btc_auto,
                 wif_private_key=private_key,
                 destination_address=address
             )
         else:
             amount = context.user_data['withdraw_amount']
-            result = btcwalletclient_wif.send_specific_btc_amount(
+            result = await asyncio.to_thread(
+                btcwalletclient_wif.send_specific_btc_amount,
                 wif_private_key=private_key,
                 destination_address=address,
                 amount_btc=amount
@@ -5615,25 +5648,27 @@ async def monitor_buyer_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                 
                 intermediary_address = intermediary_result[0]
                 
-                # Check buyer's wallet balance from blockchain
+                # Check buyer's wallet balance from blockchain (non-blocking)
                 try:
-                    balance_satoshis = btcwalletclient_wif.get_balance(buyer_address)
+                    balance_satoshis = await asyncio.to_thread(btcwalletclient_wif.get_balance, buyer_address)
                     balance_btc = balance_satoshis / 1e8
-                    
+
                     # Only proceed if there's a balance greater than 250 satoshis
                     if balance_satoshis <= 250:
                         continue
-                    
+
                     # Determine transfer amount based on balance vs transaction amount
                     if balance_btc <= transaction_amount:
-                        # Send entire balance minus 250 sats
-                        transfer_result = btcwalletclient_wif.send_max_btc_auto(
+                        # Send entire balance minus 250 sats (non-blocking)
+                        transfer_result = await asyncio.to_thread(
+                            btcwalletclient_wif.send_max_btc_auto,
                             wif_private_key=buyer_private_key,
                             destination_address=intermediary_address
                         )
                     else:
-                        # Send transaction amount (250 sats will be deducted for fee)
-                        transfer_result = btcwalletclient_wif.send_specific_btc_amount(
+                        # Send transaction amount (250 sats will be deducted for fee) (non-blocking)
+                        transfer_result = await asyncio.to_thread(
+                            btcwalletclient_wif.send_specific_btc_amount,
                             wif_private_key=buyer_private_key,
                             destination_address=intermediary_address,
                             amount_btc=transaction_amount
@@ -5756,9 +5791,9 @@ async def monitor_intermediary_wallets_callback(context: ContextTypes.DEFAULT_TY
                 
                 intermediary_address = intermediary_result[0]
                 
-                # Check escrow wallet balance from blockchain
+                # Check escrow wallet balance from blockchain (non-blocking)
                 try:
-                    balance_btc = get_btc_balance_from_blockchain(intermediary_address)
+                    balance_btc = await async_get_btc_balance_from_blockchain(intermediary_address)
                     
                     if balance_btc is None:
                         continue
@@ -5929,8 +5964,8 @@ async def monitor_all_wallets_callback(context: ContextTypes.DEFAULT_TYPE):
                 wallet_id, address, user_id, crypto_type, db_balance, previous_balance, last_checked = wallet_info
                 
                 try:
-                    # Get current balance from blockchain
-                    blockchain_balance = get_btc_balance_from_blockchain(address)
+                    # Get current balance from blockchain (non-blocking)
+                    blockchain_balance = await async_get_btc_balance_from_blockchain(address)
                     
                     if blockchain_balance is None:
                         logger.warning(f"Could not fetch blockchain balance for wallet {wallet_id} ({address})")
@@ -6217,8 +6252,8 @@ async def update_crypto_prices_callback(context: ContextTypes.DEFAULT_TYPE):
         # List of supported cryptocurrencies
         supported_cryptos = ['BTC', 'ETH', 'LTC', 'XMR', 'DASH', 'BCH', 'ZEC']
 
-        # Use batch function to fetch all prices in one API call (more efficient)
-        prices = get_multiple_crypto_prices(supported_cryptos, force_refresh=True)
+        # Use batch function to fetch all prices in one API call (non-blocking)
+        prices = await asyncio.to_thread(get_multiple_crypto_prices, supported_cryptos, True)
 
         if prices:
             logger.info(f"Updated prices for {len(prices)} cryptocurrencies: {', '.join([f'{k}=${v}' for k, v in prices.items()])}")
