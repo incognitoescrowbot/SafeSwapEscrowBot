@@ -1974,21 +1974,11 @@ async def help_command(update: Update, context: CallbackContext) -> None:
     await ensure_user_and_process_pending(update)
     
     help_text = (
-        "*Escrow Bot Instructions*\n\n"
-        "*Step 1:* Go to 'My Account'\n\n"
-        "*Step 2:* Create a new wallet for escrow\n\n"
-        "*Step 3:* Deposit funds to the wallet address\n\n"
-        "*Step 4:* Initiate transaction with 'Start Trade'\n\n"
-        "*Step 5:* Create group for escrow transaction\n\n"
-        "*Step 6:* Deposit BTC to the escrow wallet\n\n"
-        "*Step 7:* Seller will provide good & services\n\n"
-        "*Step 8:* Once buyer has received goods & services as described, they will release funds from escrow\n\n"
-        
         "*If Something Goes Wrong:*\n"
-        "Open a dispute if there's a problem with your transaction. Our team will review the evidence and make a decision on whether to issue a refund within 1 to 2 business days.\n\n"
+        "Open a dispute if there's a problem with your transaction. Our team will review the evidence and make a decision on whether or not we will issue a refund within 1 to 2 business days or sooner.\n\n"
         
         "*Escrow Fee:*\n"
-        "We charge a 5% fee for all transactions processed through our escrow bot."
+        "We charge a 5% fee for all transactions processed through escrow."
     )
 
     if HELP_VIDEO_URL:
