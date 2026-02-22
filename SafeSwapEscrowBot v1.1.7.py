@@ -1975,7 +1975,7 @@ async def help_command(update: Update, context: CallbackContext) -> None:
     
     help_text = (
         "*If Something Goes Wrong:*\n"
-        "Open a dispute if there's a problem with your transaction. Our team will review the evidence and make a decision on whether or not we will issue a refund within 1 to 2 business days or sooner.\n\n"
+        "Open a dispute if there is a problem with your transaction. Our team will review the evidence and make a decision on whether or not we will issue a refund within 1 to 2 business days or sooner.\n\n"
         
         "*Escrow Fee:*\n"
         "We charge a 5% fee for all transactions processed through escrow."
