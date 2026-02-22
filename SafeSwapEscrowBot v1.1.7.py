@@ -68,6 +68,9 @@ db_write_lock = threading.Lock()
 # Welcome Video URL
 WELCOME_VIDEO_URL = os.getenv('WELCOME_VIDEO_URL', '')
 
+# Help Video URL
+HELP_VIDEO_URL = os.getenv('HELP_VIDEO_URL', '')
+
 # Database path configuration
 RENDER_DB_DIR = '/opt/render/project/data'
 LOCAL_DB_DIR = r'C:\Users\NEW USER\PycharmProjects\SafeSwapEscrowBot'
@@ -1988,7 +1991,18 @@ async def help_command(update: Update, context: CallbackContext) -> None:
         "We charge a 5% fee for all transactions processed through our escrow bot."
     )
 
-    await safe_send_message(update, help_text, parse_mode=ParseMode.MARKDOWN)
+    if HELP_VIDEO_URL:
+        try:
+            await update.message.reply_video(
+                video=HELP_VIDEO_URL,
+                caption=help_text,
+                parse_mode=ParseMode.MARKDOWN
+            )
+        except BadRequest as e:
+            logger.warning(f"Failed to send help video: {e}. Falling back to text message.")
+            await safe_send_message(update, help_text, parse_mode=ParseMode.MARKDOWN)
+    else:
+        await safe_send_message(update, help_text, parse_mode=ParseMode.MARKDOWN)
 
 
 @with_auto_balance_refresh
