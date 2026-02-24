@@ -1936,13 +1936,13 @@ async def start(update: Update, context: CallbackContext) -> None:
         "Keep your funds safe and pay other users with confidence.\n\n"
         f"📊 *Deals Completed:* {deals_completed:,}\n"
         f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
-        "_Tap 'Help Desk' button for further guidance_\n\n"
+        "_Tap 'How To Use' button for further guidance_\n\n"
     )
 
     # Create a ReplyKeyboardMarkup with the required buttons
     keyboard = [
         [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
-        [KeyboardButton("Language"), KeyboardButton("Help Desk")],
+        [KeyboardButton("Language"), KeyboardButton("How To Use")],
         [KeyboardButton("Withdraw Funds")]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -1975,7 +1975,7 @@ async def help_command(update: Update, context: CallbackContext) -> None:
     
     help_text = (
         "*If Something Goes Wrong:*\n"
-        "Open a dispute if there is a problem with your transaction. Our team will review the evidence and make a decision on whether or not we will issue a refund within 1 to 2 business days or sooner.\n\n"
+        "Open a dispute if there is a problem with your transaction. Our team will review the evidence and make a decision on whether or not we should issue a refund to the buyer within 1 to 2 business days.\n\n"
         
         "*Escrow Fee:*\n"
         "We charge a 5% fee for all transactions processed through escrow."
@@ -5272,8 +5272,8 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
     elif text == "Language":
         # Handle Language button - redirect to language command
         await language_command(update, context)
-    elif text == "Help Desk":
-        # Handle Help Desk button - redirect to help command
+    elif text == "How To Use":
+        # Handle How To Use button - redirect to help command
         await help_command(update, context)
     elif text == "Withdraw Funds":
         # Handle Withdraw Funds button - create a command update to trigger the conversation handler
@@ -5352,12 +5352,12 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
             "Keep your funds safe and pay other users with confidence.\n\n"
             f"📊 *Deals Completed:* {deals_completed:,}\n"
             f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
-            "_Tap 'Help Desk' button for further guidance_\n\n"
+            "_Tap 'How To Use' button for further guidance_\n\n"
         )
         
         keyboard = [
             [KeyboardButton("My Account"), KeyboardButton("Transaction History")],
-            [KeyboardButton("Language"), KeyboardButton("Help Desk")],
+            [KeyboardButton("Language"), KeyboardButton("How To Use")],
             [KeyboardButton("Withdraw Funds")]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -6377,7 +6377,7 @@ def main() -> None:
     # Register message handler for keyboard buttons
     application.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND &
-        filters.Regex('^(My Account|Transaction History|Language|Help Desk|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
+        filters.Regex('^(My Account|Transaction History|Language|How To Use|Withdraw Funds|My Wallet|Start Trade|Release Funds|File Dispute|Back to Main Menu 🔙)$'),
         handle_keyboard_buttons
     ), group=1)
 
