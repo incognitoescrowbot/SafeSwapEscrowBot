@@ -1936,7 +1936,7 @@ async def start(update: Update, context: CallbackContext) -> None:
         "Keep your funds safe and pay other users with confidence.\n\n"
         f"📊 *Deals Completed:* {deals_completed:,}\n"
         f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
-        "_Tap 'How To Use' button for further guidance_\n\n"
+        "_Tap 'How To Use' for further guidance_\n\n"
     )
 
     # Create a ReplyKeyboardMarkup with the required buttons
@@ -5352,7 +5352,7 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
             "Keep your funds safe and pay other users with confidence.\n\n"
             f"📊 *Deals Completed:* {deals_completed:,}\n"
             f"⚖️ *Disputes Resolved:* {disputes_resolved:,}\n\n"
-            "_Tap 'How To Use' button for further guidance_\n\n"
+            "_Tap 'How To Use' for further guidance_\n\n"
         )
         
         keyboard = [
