@@ -589,7 +589,7 @@ def sanitize_stat_integers():
 
 
 def enforce_disputes_constraint():
-    """Ensure disputes_resolved is between 20% and 25% of deals_completed."""
+    """Ensure disputes_resolved maintains a >= 5:1 ratio with deals_completed. If not, reduce to <= 15%."""
     import math
     conn = None
     try:
@@ -604,19 +604,18 @@ def enforce_disputes_constraint():
         disputes_result = cursor.fetchone()
         disputes_resolved = int(round(disputes_result[0])) if disputes_result else 0
         
-        min_disputes = int(math.ceil(deals_completed * 0.20))
-        max_disputes = int(math.floor(deals_completed * 0.25))
-        
-        if disputes_resolved < min_disputes:
-            target_disputes = int(deals_completed * 0.22)
-            if target_disputes > disputes_resolved:
-                cursor.execute('''
-                    UPDATE stats 
-                    SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
-                    WHERE stat_key = ?
-                ''', (int(target_disputes), 'disputes_resolved'))
-                conn.commit()
-                logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {target_disputes} to maintain 20-25% constraint")
+        if deals_completed > 0 and disputes_resolved > 0:
+            ratio = deals_completed / disputes_resolved
+            if ratio < 5.0:
+                target_disputes = int(math.floor(deals_completed * 0.15))
+                if target_disputes != disputes_resolved:
+                    cursor.execute('''
+                        UPDATE stats 
+                        SET stat_value = ?, last_updated = CURRENT_TIMESTAMP 
+                        WHERE stat_key = ?
+                    ''', (target_disputes, 'disputes_resolved'))
+                    conn.commit()
+                    logger.info(f"Adjusted disputes_resolved from {disputes_resolved} to {target_disputes} to maintain >=5:1 ratio (max 15%)")
     except sqlite3.Error as e:
         print(f"Database error in enforce_disputes_constraint: {e}")
         if conn:
@@ -647,11 +646,11 @@ def enforce_tens_place_constraint():
         
         if deals_tens == disputes_tens:
             original_disputes = disputes_resolved
-            min_disputes = int(math.ceil(deals_completed * 0.20))
+            max_allowed = int(deals_completed / 5.0) if deals_completed > 0 else 0
             
-            for candidate in range(disputes_resolved, disputes_resolved + 20):
+            for candidate in range(min(disputes_resolved, max_allowed), -1, -1):
                 candidate_tens = (candidate // 10) % 10
-                if candidate_tens != deals_tens and candidate >= min_disputes:
+                if candidate_tens != deals_tens:
                     disputes_resolved = candidate
                     break
             
@@ -691,15 +690,14 @@ def enforce_ones_place_constraint():
         deals_ones = deals_completed % 10
         disputes_ones = disputes_resolved % 10
         
-        min_disputes = int(math.ceil(deals_completed * 0.20))
-        max_disputes = int(math.floor(deals_completed * 0.25))
+        max_allowed = int(deals_completed / 5.0) if deals_completed > 0 else 0
         
         if deals_ones == 0 and disputes_ones == 0:
             original_disputes = disputes_resolved
             
-            for candidate in range(disputes_resolved, disputes_resolved + 20):
+            for candidate in range(min(disputes_resolved, max_allowed), -1, -1):
                 candidate_ones = candidate % 10
-                if candidate_ones != 0 and min_disputes <= candidate <= max_disputes:
+                if candidate_ones != 0:
                     disputes_resolved = candidate
                     break
             
@@ -714,9 +712,9 @@ def enforce_ones_place_constraint():
         elif disputes_ones == deals_ones and disputes_ones != 0:
             original_disputes = disputes_resolved
             
-            for candidate in range(disputes_resolved, disputes_resolved + 20):
+            for candidate in range(min(disputes_resolved, max_allowed), -1, -1):
                 candidate_ones = candidate % 10
-                if candidate_ones != deals_ones and min_disputes <= candidate <= max_disputes:
+                if candidate_ones != deals_ones:
                     disputes_resolved = candidate
                     break
             
@@ -3155,7 +3153,12 @@ async def transaction_callback(update: Update, context: CallbackContext) -> None
         )
         
         await query.message.reply_text(
-            "My Account Options:",
+            "Select an option below:\n\n"
+            "🔹 *Start Trade*: Initiate a new escrow transaction\n"
+            "🔹 *My Wallet*: View your balances and manage addresses\n"
+            "🔹 *Release Funds*: Release escrowed funds to the seller\n"
+            "🔹 *File Dispute*: Open a dispute for an active trade",
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
     elif data.startswith('transactions_page_'):
@@ -4996,9 +4999,7 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     elif update:
         # For other errors, notify the user that something went wrong
         try:
-            await update.effective_message.reply_text(
-                "Sorry, an error occurred while processing your request."
-            )
+            pass
         except Exception as e:
             print(f"Error sending error message: {e}")
     # You can add more error handling logic here
@@ -5263,7 +5264,12 @@ async def handle_keyboard_buttons(update: Update, context: CallbackContext) -> N
         ]
         reply_markup = ReplyKeyboardMarkup(account_keyboard, resize_keyboard=True)
         await update.message.reply_text(
-            "My Account Options:",
+            "Select an option below:\n\n"
+            "🔹 *Start Trade*: Initiate a new escrow transaction\n"
+            "🔹 *My Wallet*: View your balances and manage addresses\n"
+            "🔹 *Release Funds*: Release escrowed funds to the seller\n"
+            "🔹 *File Dispute*: Open a dispute for an active trade",
+            parse_mode=ParseMode.MARKDOWN,
             reply_markup=reply_markup
         )
     elif text == "Transaction History":
